@@ -30,6 +30,7 @@ RUN apk add --no-cache curl \
 FROM golang:1.24.7-bookworm AS singbox
 
 ARG SINGBOX_CORE_VERSION=v1.13.14
+ARG SINGBOX_CORE_VERSION_NAME=1.13.14
 ARG TARGETOS=linux
 ARG TARGETARCH
 
@@ -38,6 +39,8 @@ ENV GOOS=${TARGETOS}
 ENV GOARCH=${TARGETARCH}
 
 RUN go install \
+    -trimpath \
+    -ldflags "-X github.com/sagernet/sing-box/constant.Version=${SINGBOX_CORE_VERSION_NAME} -s -w -buildid=" \
     -tags with_v2ray_api,with_clash_api,with_quic,with_utls \
     github.com/sagernet/sing-box/cmd/sing-box@${SINGBOX_CORE_VERSION}
 
