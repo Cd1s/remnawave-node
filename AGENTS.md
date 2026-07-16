@@ -4,7 +4,7 @@
 
 This is the Node runtime fork for the Remnawave dual-core project.
 
-- Fork: `Cd1s/node`
+- Fork: `Cd1s/remnawave-node`
 - Maintained branch: `singbox`
 - Upstream: `remnawave/node` branch `main`
 - Published artifact: `ghcr.io/cd1s/remnawave-node`

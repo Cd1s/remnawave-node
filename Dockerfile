@@ -51,11 +51,11 @@ ARG S6_OVERLAY_VERSION=3.2.3.0
 
 LABEL org.opencontainers.image.title="Remnawave Node"
 LABEL org.opencontainers.image.description="Remnawave Node with Xray and sing-box cores"
-LABEL org.opencontainers.image.url="https://github.com/Cd1s/node"
-LABEL org.opencontainers.image.source="https://github.com/Cd1s/node"
+LABEL org.opencontainers.image.url="https://github.com/Cd1s/remnawave-node"
+LABEL org.opencontainers.image.source="https://github.com/Cd1s/remnawave-node"
 LABEL org.opencontainers.image.vendor="Cd1s"
 LABEL org.opencontainers.image.licenses="AGPL-3.0"
-LABEL org.opencontainers.image.documentation="https://docs.rw"
+LABEL org.opencontainers.image.documentation="https://github.com/Cd1s/remnawave-panel"
 
 WORKDIR /opt/app
 
