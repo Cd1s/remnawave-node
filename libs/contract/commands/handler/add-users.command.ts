@@ -31,6 +31,11 @@ export namespace AddUsersCommand {
         tag: z.string(),
     });
 
+    const BaseAnyTlsUser = z.object({
+        type: z.literal('anytls'),
+        tag: z.string(),
+    });
+
     export const RequestSchema = z.object({
         affectedInboundTags: z.array(z.string()),
         users: z.array(
@@ -42,6 +47,7 @@ export namespace AddUsersCommand {
                         BaseShadowsocksUser,
                         BaseShadowsocks22User,
                         BaseHysteriaUser,
+                        BaseAnyTlsUser,
                     ]),
                 ),
 

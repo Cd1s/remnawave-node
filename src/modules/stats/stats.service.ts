@@ -1,13 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { QueryBus } from '@nestjs/cqrs';
 
-import { InjectXtls } from '@remnawave/xtls-sdk-nestjs';
 import { XtlsApi } from '@remnawave/xtls-sdk';
+import { InjectXtls } from '@remnawave/xtls-sdk-nestjs';
 
 import { ICommandResponse } from '@common/types/command-response.type';
 import { getSystemStats } from '@common/utils/get-system-stats';
 import { ERRORS } from '@libs/contracts/constants';
 
+import { GetTorrentBlockerReportsCountQuery } from '../_plugin/queries/get-torrent-blocker-reports-count';
+import { CoreStateService } from '../core/core-state.service';
+import { SingBoxStatsService } from '../core/singbox-stats.service';
+import { GetInterfaceStatsQuery } from '../network-stats/queries/get-interface-stats/get-interface-stats.query';
+import { IGetUserOnlineStatusRequest } from './interfaces';
 import {
     GetAllInboundsStatsResponseModel,
     GetAllOutboundsStatsResponseModel,
@@ -20,15 +25,14 @@ import {
     GetUsersIpListResponseModel,
     GetUsersStatsResponseModel,
 } from './models';
-import { GetInterfaceStatsQuery } from '../network-stats/queries/get-interface-stats/get-interface-stats.query';
-import { GetTorrentBlockerReportsCountQuery } from '../_plugin/queries/get-torrent-blocker-reports-count';
-import { IGetUserOnlineStatusRequest } from './interfaces';
 
 @Injectable()
 export class StatsService {
     constructor(
         @InjectXtls() private readonly xtlsSdk: XtlsApi,
         private readonly queryBus: QueryBus,
+        private readonly coreState: CoreStateService,
+        private readonly singBoxStats: SingBoxStatsService,
     ) {}
     private readonly logger = new Logger(StatsService.name);
 
@@ -36,6 +40,13 @@ export class StatsService {
         body: IGetUserOnlineStatusRequest,
     ): Promise<ICommandResponse<GetUserOnlineStatusResponseModel>> {
         try {
+            if (this.coreState.isSingBoxActive()) {
+                return {
+                    isOk: true,
+                    response: new GetUserOnlineStatusResponseModel(false),
+                };
+            }
+
             const response = await this.xtlsSdk.stats.getUserOnlineStatus(body.username);
 
             if (response.isOk && response.data) {
@@ -60,6 +71,42 @@ export class StatsService {
 
     public async getSystemStats(): Promise<ICommandResponse<GetSystemStatsResponseModel>> {
         try {
+            if (this.coreState.isSingBoxActive()) {
+                const response = await this.singBoxStats.getSysStats();
+                const interfaceStats = await this.queryBus.execute(new GetInterfaceStatsQuery());
+                const systemStats = getSystemStats();
+                const reportsCount = await this.queryBus.execute(
+                    new GetTorrentBlockerReportsCountQuery(),
+                );
+
+                return {
+                    isOk: true,
+                    response: new GetSystemStatsResponseModel(
+                        {
+                            numGoroutine: Number(response.NumGoroutine),
+                            numGC: Number(response.NumGC),
+                            alloc: Number(response.Alloc),
+                            totalAlloc: Number(response.TotalAlloc),
+                            sys: Number(response.Sys),
+                            mallocs: Number(response.Mallocs),
+                            frees: Number(response.Frees),
+                            liveObjects: Number(response.LiveObjects),
+                            pauseTotalNs: Number(response.PauseTotalNs),
+                            uptime: Number(response.Uptime),
+                        },
+                        {
+                            torrentBlocker: {
+                                reportsCount,
+                            },
+                        },
+                        {
+                            ...systemStats,
+                            interface: interfaceStats,
+                        },
+                    ),
+                };
+            }
+
             const response = await this.xtlsSdk.stats.getSysStats();
 
             if (!response.isOk || !response.data) {
@@ -104,6 +151,19 @@ export class StatsService {
         reset: boolean,
     ): Promise<ICommandResponse<GetUsersStatsResponseModel>> {
         try {
+            if (this.coreState.isSingBoxActive()) {
+                const snapshot = await this.singBoxStats.getSnapshot(reset, ['user>>>']);
+                return {
+                    isOk: true,
+                    response: new GetUsersStatsResponseModel(
+                        Array.from(snapshot.users, ([username, traffic]) => ({
+                            username,
+                            ...traffic,
+                        })).filter((user) => user.uplink !== 0 || user.downlink !== 0),
+                    ),
+                };
+            }
+
             const response = await this.xtlsSdk.stats.getAllUsersStats(reset);
 
             if (!response.isOk || !response.data) {
@@ -146,6 +206,20 @@ export class StatsService {
         reset: boolean,
     ): Promise<ICommandResponse<GetInboundStatsResponseModel>> {
         try {
+            if (this.coreState.isSingBoxActive()) {
+                const snapshot = await this.singBoxStats.getSnapshot(reset, [
+                    `inbound>>>${tag}>>>traffic>>>`,
+                ]);
+                const traffic = snapshot.inbounds.get(tag) ?? { uplink: 0, downlink: 0 };
+                return {
+                    isOk: true,
+                    response: new GetInboundStatsResponseModel({
+                        inbound: tag,
+                        ...traffic,
+                    }),
+                };
+            }
+
             const response = await this.xtlsSdk.stats.getInboundStats(tag, reset);
 
             if (!response.isOk || !response.data || !response.data.inbound) {
@@ -177,6 +251,20 @@ export class StatsService {
         reset: boolean,
     ): Promise<ICommandResponse<GetOutboundStatsResponseModel>> {
         try {
+            if (this.coreState.isSingBoxActive()) {
+                const snapshot = await this.singBoxStats.getSnapshot(reset, [
+                    `outbound>>>${tag}>>>traffic>>>`,
+                ]);
+                const traffic = snapshot.outbounds.get(tag) ?? { uplink: 0, downlink: 0 };
+                return {
+                    isOk: true,
+                    response: new GetOutboundStatsResponseModel({
+                        outbound: tag,
+                        ...traffic,
+                    }),
+                };
+            }
+
             const response = await this.xtlsSdk.stats.getOutboundStats(tag, reset);
 
             if (!response.isOk || !response.data || !response.data.outbound) {
@@ -207,6 +295,19 @@ export class StatsService {
         reset: boolean,
     ): Promise<ICommandResponse<GetAllInboundsStatsResponseModel>> {
         try {
+            if (this.coreState.isSingBoxActive()) {
+                const snapshot = await this.singBoxStats.getSnapshot(reset, ['inbound>>>']);
+                return {
+                    isOk: true,
+                    response: new GetAllInboundsStatsResponseModel(
+                        Array.from(snapshot.inbounds, ([inbound, traffic]) => ({
+                            inbound,
+                            ...traffic,
+                        })),
+                    ),
+                };
+            }
+
             const response = await this.xtlsSdk.stats.getAllInboundsStats(reset);
 
             if (!response.isOk || !response.data) {
@@ -233,6 +334,19 @@ export class StatsService {
         reset: boolean,
     ): Promise<ICommandResponse<GetAllOutboundsStatsResponseModel>> {
         try {
+            if (this.coreState.isSingBoxActive()) {
+                const snapshot = await this.singBoxStats.getSnapshot(reset, ['outbound>>>']);
+                return {
+                    isOk: true,
+                    response: new GetAllOutboundsStatsResponseModel(
+                        Array.from(snapshot.outbounds, ([outbound, traffic]) => ({
+                            outbound,
+                            ...traffic,
+                        })),
+                    ),
+                };
+            }
+
             const response = await this.xtlsSdk.stats.getAllOutboundsStats(reset);
 
             if (!response.isOk || !response.data) {
@@ -260,6 +374,26 @@ export class StatsService {
         reset: boolean,
     ): Promise<ICommandResponse<GetCombinedStatsResponseModel>> {
         try {
+            if (this.coreState.isSingBoxActive()) {
+                const snapshot = await this.singBoxStats.getSnapshot(reset, [
+                    'inbound>>>',
+                    'outbound>>>',
+                ]);
+                return {
+                    isOk: true,
+                    response: new GetCombinedStatsResponseModel(
+                        Array.from(snapshot.inbounds, ([inbound, traffic]) => ({
+                            inbound,
+                            ...traffic,
+                        })),
+                        Array.from(snapshot.outbounds, ([outbound, traffic]) => ({
+                            outbound,
+                            ...traffic,
+                        })),
+                    ),
+                };
+            }
+
             const { isOk: isOkInbounds, data: inboundsData } =
                 await this.xtlsSdk.stats.getAllInboundsStats(reset);
             const { isOk: isOkOutbounds, data: outboundsData } =
@@ -292,6 +426,13 @@ export class StatsService {
         userId: string,
     ): Promise<ICommandResponse<GetUserIpListResponseModel>> {
         try {
+            if (this.coreState.isSingBoxActive()) {
+                return {
+                    isOk: true,
+                    response: new GetUserIpListResponseModel([]),
+                };
+            }
+
             const userIps = await this.xtlsSdk.stats.rawClient.getStatsOnlineIpList({
                 name: `user>>>${userId}>>>online`,
                 reset: true,
@@ -324,6 +465,13 @@ export class StatsService {
 
     public async getUsersIpList(): Promise<ICommandResponse<GetUsersIpListResponseModel>> {
         try {
+            if (this.coreState.isSingBoxActive()) {
+                return {
+                    isOk: true,
+                    response: new GetUsersIpListResponseModel([]),
+                };
+            }
+
             const response = await this.xtlsSdk.stats.getUsersStats(false, false);
 
             if (!response.isOk || !response.data || !response.data.users) {

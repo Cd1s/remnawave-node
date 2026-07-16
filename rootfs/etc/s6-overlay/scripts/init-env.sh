@@ -34,5 +34,9 @@ XRAY_CORE_VERSION=$(/usr/local/bin/rw-core version | head -n 1)
 printf '%s' "$XRAY_CORE_VERSION" > "$ENV_DIR/XRAY_CORE_VERSION"
 echo "[init-env] Xray version: $XRAY_CORE_VERSION"
 
+SINGBOX_CORE_VERSION=$(/usr/local/bin/sing-box version | head -n 1)
+printf '%s' "$SINGBOX_CORE_VERSION" > "$ENV_DIR/SINGBOX_CORE_VERSION"
+echo "[init-env] sing-box version: $SINGBOX_CORE_VERSION"
+
 echo "[init-env] done."
 exit 0

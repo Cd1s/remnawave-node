@@ -1,31 +1,33 @@
+import ems from 'enhanced-ms';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import ems from 'enhanced-ms';
 import pRetry from 'p-retry';
 import semver from 'semver';
 
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
-import { CommandBus, QueryBus } from '@nestjs/cqrs';
 import { ConfigService } from '@nestjs/config';
+import { CommandBus, QueryBus } from '@nestjs/cqrs';
 
-import { InjectXtls } from '@remnawave/xtls-sdk-nestjs';
 import { XtlsApi } from '@remnawave/xtls-sdk';
+import { InjectXtls } from '@remnawave/xtls-sdk-nestjs';
 
-import { getSystemInfo, getSystemStats } from '@common/utils/get-system-stats';
 import { ICommandResponse } from '@common/types/command-response.type';
 import { generateApiConfig } from '@common/utils/generate-api-config';
+import { getSystemInfo, getSystemStats } from '@common/utils/get-system-stats';
 import { StartXrayCommand } from '@libs/contracts/commands';
-import { KNOWN_ERRORS } from '@libs/contracts/constants';
+import { CORE_TYPE, KNOWN_ERRORS } from '@libs/contracts/constants';
 
+import { ResetPluginsCommand } from '../_plugin/commands/reset-plugins/reset-plugins.command';
+import { GetTorrentBlockerStateQuery } from '../_plugin/queries/get-torrent-blocker-state';
+import { CoreStateService } from '../core/core-state.service';
+import { SingBoxService } from '../core/singbox.service';
+import { InternalService } from '../internal/internal.service';
+import { GetInterfaceStatsQuery } from '../network-stats/queries/get-interface-stats/get-interface-stats.query';
 import {
     GetNodeHealthCheckResponseModel,
     StartXrayResponseModel,
     StopXrayResponseModel,
 } from './models';
-import { GetInterfaceStatsQuery } from '../network-stats/queries/get-interface-stats/get-interface-stats.query';
-import { ResetPluginsCommand } from '../_plugin/commands/reset-plugins/reset-plugins.command';
-import { GetTorrentBlockerStateQuery } from '../_plugin/queries/get-torrent-blocker-state';
-import { InternalService } from '../internal/internal.service';
 import { XrayProcessService } from './xray-process.service';
 
 const XRAY_LOG_FILE = '/var/log/xray/current' as const;
@@ -54,6 +56,8 @@ export class XrayService implements OnApplicationBootstrap {
         private readonly configService: ConfigService,
         private readonly queryBus: QueryBus,
         private readonly commandBus: CommandBus,
+        private readonly coreState: CoreStateService,
+        private readonly singBoxService: SingBoxService,
     ) {
         this.internal = {
             socketPath: this.configService.getOrThrow<string>('INTERNAL_SOCKET_PATH'),
@@ -90,6 +94,19 @@ export class XrayService implements OnApplicationBootstrap {
         body: StartXrayCommand.Request,
         ip: string,
     ): Promise<ICommandResponse<StartXrayResponseModel>> {
+        if (body.coreType === CORE_TYPE.SINGBOX) {
+            if (this.isXrayOnline) {
+                await this.killAllXrayProcesses();
+                this.isXrayOnline = false;
+            }
+            return await this.singBoxService.start(body, ip);
+        }
+
+        if (this.coreState.isSingBoxActive()) {
+            await this.singBoxService.stop();
+            this.internalService.cleanup();
+        }
+
         const interfaceStats = await this.queryBus.execute(new GetInterfaceStatsQuery());
         const tm = performance.now();
         const system = {
@@ -104,6 +121,7 @@ export class XrayService implements OnApplicationBootstrap {
                 isOk: true,
                 response: new StartXrayResponseModel(
                     false,
+                    CORE_TYPE.XRAY,
                     this.xrayVersion,
                     'Request already in progress',
                     {
@@ -136,6 +154,7 @@ export class XrayService implements OnApplicationBootstrap {
                         isOk: true,
                         response: new StartXrayResponseModel(
                             true,
+                            CORE_TYPE.XRAY,
                             this.xrayVersion,
                             null,
                             {
@@ -161,7 +180,11 @@ export class XrayService implements OnApplicationBootstrap {
                 internal: this.internal,
             });
 
-            await this.internalService.extractUsersFromConfig(body.internals.hashes, fullConfig);
+            await this.internalService.extractUsersFromConfig(
+                body.internals.hashes,
+                fullConfig,
+                CORE_TYPE.XRAY,
+            );
 
             const xrayProcess = await this.restartXrayProcess();
 
@@ -172,6 +195,7 @@ export class XrayService implements OnApplicationBootstrap {
                     isOk: true,
                     response: new StartXrayResponseModel(
                         false,
+                        CORE_TYPE.XRAY,
                         null,
                         xrayProcess.error,
                         { version: this.nodeVersion },
@@ -196,6 +220,7 @@ export class XrayService implements OnApplicationBootstrap {
                     isOk: true,
                     response: new StartXrayResponseModel(
                         isStarted,
+                        CORE_TYPE.XRAY,
                         this.xrayVersion,
                         'Xray Core did not become ready in time',
                         {
@@ -207,6 +232,7 @@ export class XrayService implements OnApplicationBootstrap {
             }
 
             this.isXrayOnline = true;
+            this.coreState.setActiveCore(CORE_TYPE.XRAY, true, this.xrayVersion);
 
             this.logger.log(`✔ XRay Core v${this.xrayVersion} is up and running.`);
 
@@ -214,6 +240,7 @@ export class XrayService implements OnApplicationBootstrap {
                 isOk: true,
                 response: new StartXrayResponseModel(
                     isStarted,
+                    CORE_TYPE.XRAY,
                     this.xrayVersion,
                     null,
                     {
@@ -229,11 +256,13 @@ export class XrayService implements OnApplicationBootstrap {
             }
 
             this.logger.error(`Failed to start Xray: ${errorMessage}`);
+            this.coreState.setOffline(CORE_TYPE.XRAY);
 
             return {
                 isOk: true,
                 response: new StartXrayResponseModel(
                     false,
+                    CORE_TYPE.XRAY,
                     null,
                     errorMessage,
                     {
@@ -272,8 +301,10 @@ export class XrayService implements OnApplicationBootstrap {
             }
 
             await this.killAllXrayProcesses();
+            await this.singBoxService.stop();
 
             this.isXrayOnline = false;
+            this.coreState.setOffline();
             this.internalService.cleanup();
 
             return {
@@ -295,8 +326,10 @@ export class XrayService implements OnApplicationBootstrap {
                 isOk: true,
                 response: new GetNodeHealthCheckResponseModel(
                     true,
-                    this.isXrayOnline,
+                    this.coreState.isOnline(),
                     this.xrayVersion,
+                    this.coreState.getActiveCore(),
+                    this.coreState.getVersion(),
                     this.nodeVersion,
                 ),
             };
@@ -305,7 +338,14 @@ export class XrayService implements OnApplicationBootstrap {
 
             return {
                 isOk: true,
-                response: new GetNodeHealthCheckResponseModel(false, false, null, this.nodeVersion),
+                response: new GetNodeHealthCheckResponseModel(
+                    false,
+                    false,
+                    null,
+                    this.coreState.getActiveCore(),
+                    this.coreState.getVersion(),
+                    this.nodeVersion,
+                ),
             };
         }
     }

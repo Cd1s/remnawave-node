@@ -1,3 +1,4 @@
+import { TCoreType } from '@libs/contracts/constants';
 import { TNodeSystem } from '@libs/contracts/models';
 
 interface INodeInformation {
@@ -6,6 +7,7 @@ interface INodeInformation {
 
 export class StartXrayResponseModel {
     public isStarted: boolean;
+    public coreType: TCoreType;
     public version: null | string;
     public error: null | string;
     public nodeInformation: INodeInformation;
@@ -13,12 +15,14 @@ export class StartXrayResponseModel {
 
     constructor(
         isStarted: boolean,
+        coreType: TCoreType,
         version: null | string,
         error: null | string,
         nodeInformation: INodeInformation,
         system: TNodeSystem,
     ) {
         this.isStarted = isStarted;
+        this.coreType = coreType;
         this.version = version;
         this.error = error;
         this.nodeInformation = nodeInformation;

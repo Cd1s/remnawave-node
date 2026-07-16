@@ -1,20 +1,24 @@
-import { hasCapNetAdmin } from 'sockdestroy';
 import ems from 'enhanced-ms';
+import { hasCapNetAdmin } from 'sockdestroy';
 
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { EventBus } from '@nestjs/cqrs';
 
+import { XtlsApi } from '@remnawave/xtls-sdk';
+import { InjectXtls } from '@remnawave/xtls-sdk-nestjs';
+import { ISdkResponse } from '@remnawave/xtls-sdk/build/src/common/types';
 import {
     RemoveUserResponseModel as RemoveUserResponseModelFromSdk,
     AddUserResponseModel as AddUserResponseModelFromSdk,
 } from '@remnawave/xtls-sdk/build/src/handler/models';
-import { ISdkResponse } from '@remnawave/xtls-sdk/build/src/common/types';
-import { InjectXtls } from '@remnawave/xtls-sdk-nestjs';
-import { XtlsApi } from '@remnawave/xtls-sdk';
 
 import { ICommandResponse } from '@common/types/command-response.type';
 import { ERRORS } from '@libs/contracts/constants/errors';
 
+import { DropConnectionsEvent } from '../_plugin/events/drop-connections';
+import { CoreStateService } from '../core/core-state.service';
+import { ISingBoxUserMutation, SingBoxService } from '../core/singbox.service';
+import { InternalService } from '../internal/internal.service';
 import {
     AddUserRequestDto,
     AddUsersRequestDto,
@@ -30,8 +34,6 @@ import {
     RemoveUserResponseModel,
     GenericResponseModel,
 } from './models';
-import { DropConnectionsEvent } from '../_plugin/events/drop-connections';
-import { InternalService } from '../internal/internal.service';
 
 @Injectable()
 export class HandlerService implements OnModuleInit {
@@ -42,6 +44,8 @@ export class HandlerService implements OnModuleInit {
         @InjectXtls() private readonly xtlsApi: XtlsApi,
         private readonly internalService: InternalService,
         private readonly eventBus: EventBus,
+        private readonly coreState: CoreStateService,
+        private readonly singBoxService: SingBoxService,
     ) {}
 
     public async onModuleInit(): Promise<void> {
@@ -61,6 +65,28 @@ export class HandlerService implements OnModuleInit {
     public async addUser(data: AddUserRequestDto): Promise<ICommandResponse<AddUserResponseModel>> {
         try {
             const { data: requestData, hashData } = data;
+
+            if (this.coreState.isSingBoxActive()) {
+                await this.singBoxService.upsertUsers(
+                    [requestData[0]?.username].filter(
+                        (username): username is string => typeof username === 'string',
+                    ),
+                    requestData.map((item) => ({
+                        tag: item.tag,
+                        type: item.type,
+                        name: item.username,
+                        ...('password' in item ? { password: item.password } : {}),
+                        ...('uuid' in item ? { uuid: item.uuid } : {}),
+                        ...('flow' in item ? { flow: item.flow } : {}),
+                    })),
+                );
+
+                return {
+                    isOk: true,
+                    response: new AddUserResponseModel(true, null),
+                };
+            }
+
             const response: Array<ISdkResponse<AddUserResponseModelFromSdk>> = [];
 
             for (const item of requestData) {
@@ -203,6 +229,15 @@ export class HandlerService implements OnModuleInit {
     ): Promise<ICommandResponse<RemoveUserResponseModel>> {
         try {
             const { username, hashData } = data;
+
+            if (this.coreState.isSingBoxActive()) {
+                await this.singBoxService.removeUsers([username]);
+                return {
+                    isOk: true,
+                    response: new RemoveUserResponseModel(true, null),
+                };
+            }
+
             const response: Array<ISdkResponse<RemoveUserResponseModelFromSdk>> = [];
 
             const inboundTags = this.internalService.getXtlsConfigInbounds();
@@ -262,6 +297,38 @@ export class HandlerService implements OnModuleInit {
         const tm = performance.now();
         try {
             const { affectedInboundTags, users } = data;
+
+            if (this.coreState.isSingBoxActive()) {
+                const mutations: ISingBoxUserMutation[] = [];
+                for (const user of users) {
+                    for (const inbound of user.inboundData) {
+                        mutations.push({
+                            tag: inbound.tag,
+                            type: inbound.type,
+                            name: user.userData.userId,
+                            password:
+                                inbound.type === 'trojan'
+                                    ? user.userData.trojanPassword
+                                    : inbound.type === 'shadowsocks' ||
+                                        inbound.type === 'shadowsocks22'
+                                      ? user.userData.ssPassword
+                                      : user.userData.vlessUuid,
+                            uuid: user.userData.vlessUuid,
+                            ...('flow' in inbound ? { flow: inbound.flow } : {}),
+                        });
+                    }
+                }
+
+                await this.singBoxService.upsertUsers(
+                    users.map((user) => user.userData.userId),
+                    mutations,
+                );
+
+                return {
+                    isOk: true,
+                    response: new AddUserResponseModel(true, null),
+                };
+            }
 
             for (const tag of affectedInboundTags) {
                 this.internalService.addXtlsConfigInbound(tag);
@@ -395,6 +462,14 @@ export class HandlerService implements OnModuleInit {
         try {
             const inboundTags = this.internalService.getXtlsConfigInbounds();
 
+            if (this.coreState.isSingBoxActive()) {
+                await this.singBoxService.removeUsers(data.users.map((user) => user.userId));
+                return {
+                    isOk: true,
+                    response: new RemoveUserResponseModel(true, null),
+                };
+            }
+
             if (inboundTags.size === 0) {
                 return {
                     isOk: true,
@@ -466,6 +541,19 @@ export class HandlerService implements OnModuleInit {
         tag: string,
     ): Promise<ICommandResponse<GetInboundUsersResponseModel>> {
         try {
+            if (this.coreState.isSingBoxActive()) {
+                return {
+                    isOk: true,
+                    response: new GetInboundUsersResponseModel(
+                        this.singBoxService.getInboundUsers(tag).map((username) => ({
+                            username,
+                            level: 0,
+                            protocol: 'singbox',
+                        })),
+                    ),
+                };
+            }
+
             // TODO: add a better way to return users (trojan, vless, etc)
             const response = await this.xtlsApi.handler.getInboundUsers(tag);
 
@@ -495,6 +583,15 @@ export class HandlerService implements OnModuleInit {
         tag: string,
     ): Promise<ICommandResponse<GetInboundUsersCountResponseModel>> {
         try {
+            if (this.coreState.isSingBoxActive()) {
+                return {
+                    isOk: true,
+                    response: new GetInboundUsersCountResponseModel(
+                        this.singBoxService.getInboundUsers(tag).length,
+                    ),
+                };
+            }
+
             const response = await this.xtlsApi.handler.getInboundUsersCount(tag);
 
             if (!response.isOk || !response.data) {
@@ -564,6 +661,10 @@ export class HandlerService implements OnModuleInit {
 
     private async getUserIps(userId: string): Promise<string[] | null> {
         try {
+            if (this.coreState.isSingBoxActive()) {
+                return null;
+            }
+
             if (!this.capNetAdminAvailable) {
                 return null;
             }
@@ -588,6 +689,11 @@ export class HandlerService implements OnModuleInit {
 
     public async removeOutbound(tag: string): Promise<void> {
         try {
+            if (this.coreState.isSingBoxActive()) {
+                this.logger.warn(`Dynamic outbound removal is not supported by sing-box: ${tag}`);
+                return;
+            }
+
             await this.xtlsApi.handler.rawClient.removeOutbound({
                 tag,
             });

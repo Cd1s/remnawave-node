@@ -1,15 +1,17 @@
 import { Logger, Module, OnApplicationShutdown } from '@nestjs/common';
 
-import { NetworkStatsModule } from './network-stats/network-stats.module';
-import { AsnLmdbModule } from './asn-lmdb/asn-lmdb.module';
-import { HandlerModule } from './handler/handler.module';
 import { PluginModule } from './_plugin/plugin.module';
-import { XrayModule } from './xray-core/xray.module';
+import { AsnLmdbModule } from './asn-lmdb/asn-lmdb.module';
+import { CoreModule } from './core/core.module';
+import { HandlerModule } from './handler/handler.module';
+import { NetworkStatsModule } from './network-stats/network-stats.module';
 import { StatsModule } from './stats/stats.module';
+import { XrayModule } from './xray-core/xray.module';
 
 @Module({
     imports: [
         AsnLmdbModule,
+        CoreModule,
         NetworkStatsModule,
         PluginModule,
         StatsModule,

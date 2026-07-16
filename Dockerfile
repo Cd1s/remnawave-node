@@ -27,15 +27,30 @@ RUN apk add --no-cache curl \
     && rm -f /tmp/asn-prefixes-lmdb.tar.gz
 
 
+FROM golang:1.24.7-bookworm AS singbox
+
+ARG SINGBOX_CORE_VERSION=v1.13.14
+ARG TARGETOS=linux
+ARG TARGETARCH
+
+ENV CGO_ENABLED=0
+ENV GOOS=${TARGETOS}
+ENV GOARCH=${TARGETARCH}
+
+RUN go install \
+    -tags with_v2ray_api,with_clash_api,with_quic,with_utls \
+    github.com/sagernet/sing-box/cmd/sing-box@${SINGBOX_CORE_VERSION}
+
+
 FROM node:24.18-trixie-slim
 
 ARG S6_OVERLAY_VERSION=3.2.3.0
 
 LABEL org.opencontainers.image.title="Remnawave Node"
-LABEL org.opencontainers.image.description="Remnawave Node with built-in XRay Core"
-LABEL org.opencontainers.image.url="https://github.com/remnawave/node"
-LABEL org.opencontainers.image.source="https://github.com/remnawave/node"
-LABEL org.opencontainers.image.vendor="Remnawave"
+LABEL org.opencontainers.image.description="Remnawave Node with Xray and sing-box cores"
+LABEL org.opencontainers.image.url="https://github.com/Cd1s/node"
+LABEL org.opencontainers.image.source="https://github.com/Cd1s/node"
+LABEL org.opencontainers.image.vendor="Cd1s"
 LABEL org.opencontainers.image.licenses="AGPL-3.0"
 LABEL org.opencontainers.image.documentation="https://docs.rw"
 
@@ -47,6 +62,7 @@ COPY --from=xray /usr/local/bin/xray /usr/local/bin/xray
 COPY --from=xray /usr/local/share/xray/geoip.dat /usr/local/share/xray/geoip.dat
 COPY --from=xray /usr/local/share/xray/geosite.dat /usr/local/share/xray/geosite.dat
 COPY --from=xray /usr/local/share/asn /usr/local/share/asn
+COPY --from=singbox /go/bin/sing-box /usr/local/bin/sing-box
 
 COPY rootfs/ /
 
@@ -59,11 +75,13 @@ RUN apt-get update \
     && xz -dc /tmp/s6-noarch.tar.xz | tar -C / -xpf - \
     && xz -dc /tmp/s6-arch.tar.xz | tar -C / -xpf - \
     && rm -f /tmp/s6-noarch.tar.xz /tmp/s6-arch.tar.xz \
-    && mkdir -p /var/log/xray \
+    && mkdir -p /var/log/xray /var/log/sing-box /run/remnawave \
     && chmod +x /opt/app/dist/cli.js \
         /etc/s6-overlay/scripts/init-env.sh \
         /etc/s6-overlay/s6-rc.d/xray/run \
         /etc/s6-overlay/s6-rc.d/xray-log/run \
+        /etc/s6-overlay/s6-rc.d/sing-box/run \
+        /etc/s6-overlay/s6-rc.d/sing-box-log/run \
     && ln -s /usr/local/bin/xray /usr/local/bin/rw-core \
     && ln -s /opt/app/dist/cli.js /usr/local/bin/cli \
     && printf '#!/bin/sh\ntail -n +1 -f /var/log/xray/current\n' > /usr/local/bin/xlogs \
@@ -79,6 +97,8 @@ ENV NODE_ENV=production
 ENV NODE_OPTIONS="--max-http-header-size=65536"
 ENV UV_THREADPOOL_SIZE=24
 ENV XRAY_JSON_STRICT=true
+ENV SINGBOX_CONFIG_PATH=/run/remnawave/sing-box.json
+ENV SINGBOX_API_LISTEN=127.0.0.1:19090
 ENV S6_VERBOSITY=1
 
 ENTRYPOINT ["/init"]

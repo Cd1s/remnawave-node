@@ -7,6 +7,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HashedSet } from '@remnawave/hashed-set';
 
 import { StartXrayCommand } from '@libs/contracts/commands';
+import { CORE_TYPE, TCoreType } from '@libs/contracts/constants';
 
 @Injectable()
 export class InternalService {
@@ -16,7 +17,9 @@ export class InternalService {
     private xrayConfig: null | Record<string, unknown> = null;
     private emptyConfigHash: null | string = null;
     private inboundsHashMap: Map<string, HashedSet> = new Map();
+    private singBoxInboundHashes: Map<string, string> = new Map();
     private xtlsConfigInbounds: Set<string> = new Set();
+    private coreType: TCoreType = CORE_TYPE.XRAY;
 
     constructor() {}
 
@@ -35,9 +38,11 @@ export class InternalService {
     public async extractUsersFromConfig(
         hashes: StartXrayCommand.Request['internals']['hashes'],
         newConfig: Record<string, unknown>,
+        coreType: TCoreType = CORE_TYPE.XRAY,
     ): Promise<void> {
         this.cleanup();
 
+        this.coreType = coreType;
         this.emptyConfigHash = hashes.emptyConfig;
         this.xrayConfig = newConfig;
 
@@ -47,6 +52,17 @@ export class InternalService {
         this.logger.log(`▸ Empty Config Hash: ${this.emptyConfigHash}`);
 
         const start = performance.now();
+        if (coreType === CORE_TYPE.SINGBOX) {
+            for (const inbound of hashes.inbounds) {
+                this.singBoxInboundHashes.set(inbound.tag, inbound.hash);
+                this.xtlsConfigInbounds.add(inbound.tag);
+                this.logger.log(
+                    `▸ ${inbound.tag} · ${String(inbound.usersCount)} users · ${inbound.hash}`,
+                );
+            }
+            return;
+        }
+
         if (newConfig.inbounds && Array.isArray(newConfig.inbounds)) {
             const validTags = new Set(hashes.inbounds.map((item) => item.tag));
             const remoteHashByTag = new Map(hashes.inbounds.map((i) => [i.tag, i.hash]));
@@ -111,7 +127,34 @@ export class InternalService {
             }
 
             if (incomingHashes.inbounds.length !== this.inboundsHashMap.size) {
-                this.logger.warn('Number of Xray Core inbounds has changed');
+                const knownInbounds =
+                    this.coreType === CORE_TYPE.SINGBOX
+                        ? this.singBoxInboundHashes.size
+                        : this.inboundsHashMap.size;
+                if (incomingHashes.inbounds.length === knownInbounds) {
+                    // Continue with per-inbound comparison below.
+                } else {
+                    this.logger.warn('Number of Core inbounds has changed');
+                    return true;
+                }
+            }
+
+            if (this.coreType === CORE_TYPE.SINGBOX) {
+                for (const incomingInbound of incomingHashes.inbounds) {
+                    if (
+                        this.singBoxInboundHashes.get(incomingInbound.tag) !== incomingInbound.hash
+                    ) {
+                        this.logger.warn(
+                            `User configuration changed for inbound ${incomingInbound.tag}`,
+                        );
+                        return true;
+                    }
+                }
+                this.logger.log('sing-box configuration is up-to-date - no restart required');
+                return false;
+            }
+
+            if (incomingHashes.inbounds.length !== this.inboundsHashMap.size) {
                 return true;
             }
 
@@ -211,8 +254,10 @@ export class InternalService {
         this.logger.log('Cleaning up internal service.');
 
         this.inboundsHashMap.clear();
+        this.singBoxInboundHashes.clear();
         this.xtlsConfigInbounds.clear();
         this.xrayConfig = null;
         this.emptyConfigHash = null;
+        this.coreType = CORE_TYPE.XRAY;
     }
 }
