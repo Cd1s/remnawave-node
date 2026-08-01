@@ -48,7 +48,36 @@ jobs:
 
       - name: Publish package on NPM
         working-directory: './libs/contract'
-        run: npm publish --access public
+        run: |
+          set -euo pipefail
+          package_name="$(node -p "require('./package.json').name")"
+          package_version="$(node -p "require('./package.json').version")"
+          package_ref="${package_name}@${package_version}"
+          registry='https://registry.npmjs.org'
+          query_output=''
+          set +e
+          query_output="$(npm view "$package_ref" version --registry="$registry" 2>&1)"
+          query_rc=$?
+          set -e
+
+          if [ "$query_rc" -eq 0 ] && [ -n "$query_output" ]; then
+            echo "package_publish=skipped package=${package_ref} reason=already_exists"
+            exit 0
+          fi
+
+          if [ "$query_rc" -ne 0 ]; then
+            if [[ "$query_output" != *E404* && "$query_output" != *"404 Not Found"* ]]; then
+              echo "$query_output" >&2
+              echo "package_publish=failed package=${package_ref} reason=registry_query_error" >&2
+              exit "$query_rc"
+            fi
+          elif [ -z "$query_output" ]; then
+            echo "package_publish=failed package=${package_ref} reason=empty_registry_query" >&2
+            exit 1
+          fi
+
+          npm publish --access public
+          echo "package_publish=published package=${package_ref}"
 
   send-telegram-message:
     name: Send Telegram message
