@@ -1,7 +1,7 @@
 import { Body, Controller, Post, UseFilters, UseGuards } from '@nestjs/common';
 
-import { JwtDefaultGuard } from '@common/guards/jwt-guards';
 import { HttpExceptionFilter } from '@common/exception';
+import { JwtDefaultGuard } from '@common/guards/jwt-guards';
 import { errorHandler } from '@common/helpers';
 import { HANDLER_CONTROLLER, HANDLER_ROUTES } from '@libs/contracts/api/controllers/handler';
 
@@ -17,6 +17,7 @@ import {
     RemoveUsersRequestDto,
     RemoveUsersResponseDto,
 } from './dtos';
+import { AddUserRequestDto, AddUserResponseDto } from './dtos/add-user.dto';
 import {
     GetInboundUsersCountRequestDto,
     GetInboundUsersCountResponseDto,
@@ -25,11 +26,10 @@ import {
     GetInboundUsersRequestDto,
     GetInboundUsersResponseDto,
 } from './dtos/get-inbound-users.dto';
-import { AddUserRequestDto, AddUserResponseDto } from './dtos/add-user.dto';
 import { HandlerService } from './handler.service';
 
-@UseFilters(HttpExceptionFilter)
 @UseGuards(JwtDefaultGuard)
+@UseFilters(HttpExceptionFilter)
 @Controller(HANDLER_CONTROLLER)
 export class HandlerController {
     constructor(private readonly handlerService: HandlerService) {}

@@ -1,6 +1,7 @@
 const webpack = require('webpack');
 const TerserPlugin = require('terser-webpack-plugin');
 const pkg = require('./package.json');
+const nodeVersion = process.env.RWNODE_VERSION || pkg.version;
 
 module.exports = function (options) {
     return {
@@ -30,7 +31,7 @@ module.exports = function (options) {
         plugins: [
             ...(options.plugins ?? []),
             new webpack.DefinePlugin({
-                __RWNODE_VERSION__: JSON.stringify(pkg.version),
+                __RWNODE_VERSION__: JSON.stringify(nodeVersion),
             }),
             new webpack.BannerPlugin({
                 banner: '#!/usr/bin/env node',

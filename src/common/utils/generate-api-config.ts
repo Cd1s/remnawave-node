@@ -1,5 +1,6 @@
 import { hasCapNetAdmin } from 'sockdestroy';
 
+import { XRAY_INTERNAL_FULL_WEBHOOK_PATH } from '@libs/contracts/constants';
 import {
     XRAY_API_INBOUND_MODEL,
     XRAY_DEFAULT_API_MODEL,
@@ -9,7 +10,6 @@ import {
     XRAY_TORRENT_BLOCKER_OUTBOUND_MODEL,
     XRAY_TORRENT_BLOCKER_ROUTING_RULES_MODEL,
 } from '@libs/contracts/constants/xray';
-import { XRAY_INTERNAL_FULL_WEBHOOK_PATH } from '@libs/contracts/constants';
 
 import { IPolicyConfig } from './interfaces';
 
@@ -46,7 +46,7 @@ export const generateApiConfig = (args: IGenerateApiConfigParams): Record<string
     const builtPolicy: IPolicyConfig = {
         levels: {
             '0': {
-                ...(policyConfig?.levels?.['0'] || {}),
+                ...policyConfig?.levels?.['0'],
                 statsUserUplink: XRAY_DEFAULT_POLICY_MODEL.policy.levels['0'].statsUserUplink,
                 statsUserDownlink: XRAY_DEFAULT_POLICY_MODEL.policy.levels['0'].statsUserDownlink,
                 statsUserOnline: hasCapNetAdminResult,
@@ -68,7 +68,7 @@ export const generateApiConfig = (args: IGenerateApiConfigParams): Record<string
         outbounds: [...(Array.isArray(config.outbounds) ? config.outbounds : [])],
         policy: builtPolicy,
         routing: {
-            ...(config.routing || {}),
+            ...(config.routing as Record<string, unknown> | undefined),
             rules: [
                 XRAY_ROUTING_RULES_MODEL,
                 ...((config.routing as unknown as IRoutingXrayConfig)?.rules ?? []).filter(

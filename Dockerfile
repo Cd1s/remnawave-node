@@ -1,5 +1,8 @@
 FROM node:24.18-trixie-slim AS build
 
+ARG RWNODE_VERSION
+ENV RWNODE_VERSION=${RWNODE_VERSION}
+
 WORKDIR /opt/app
 
 COPY package*.json ./

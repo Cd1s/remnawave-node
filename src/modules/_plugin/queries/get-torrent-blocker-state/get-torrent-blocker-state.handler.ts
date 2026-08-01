@@ -1,8 +1,8 @@
-import { IQueryHandler, QueryHandler } from '@nestjs/cqrs';
 import { Logger } from '@nestjs/common';
+import { IQueryHandler, QueryHandler } from '@nestjs/cqrs';
 
-import { GetTorrentBlockerStateQuery } from './get-torrent-blocker-state.query';
 import { PluginStateService } from '../../services/plugin-state.service';
+import { GetTorrentBlockerStateQuery } from './get-torrent-blocker-state.query';
 
 @QueryHandler(GetTorrentBlockerStateQuery)
 export class GetTorrentBlockerStateHandler implements IQueryHandler<GetTorrentBlockerStateQuery> {

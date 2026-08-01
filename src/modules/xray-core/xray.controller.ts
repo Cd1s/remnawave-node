@@ -1,8 +1,8 @@
 import { Body, Controller, Get, Ip, Logger, Post, UseFilters, UseGuards } from '@nestjs/common';
 
 import { HttpExceptionFilter } from '@common/exception/http-exception.filter';
-import { errorHandler } from '@common/helpers/error-handler.helper';
 import { JwtDefaultGuard } from '@common/guards/jwt-guards';
+import { errorHandler } from '@common/helpers/error-handler.helper';
 import { XRAY_CONTROLLER, XRAY_ROUTES } from '@libs/contracts/api';
 
 import {
@@ -13,8 +13,8 @@ import {
 } from './dtos/';
 import { XrayService } from './xray.service';
 
-@UseFilters(HttpExceptionFilter)
 @UseGuards(JwtDefaultGuard)
+@UseFilters(HttpExceptionFilter)
 @Controller(XRAY_CONTROLLER)
 export class XrayController {
     private readonly logger = new Logger(XrayController.name);

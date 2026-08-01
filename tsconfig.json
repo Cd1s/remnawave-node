@@ -14,19 +14,11 @@
     "outDir": "./dist",
     "baseUrl": "./",
     "paths": {
-      "@common/*": [
-        "./src/common/*"
-      ],
-      "@libs/contracts/*": [
-        "./libs/contract/*"
-      ],
-      "@xray-protos/*": [
-        "./src/xray-protos/*"
-      ]
+      "@common/*": ["./src/common/*"],
+      "@libs/contracts/*": ["./libs/contract/*"],
+      "@xray-protos/*": ["./src/xray-protos/*"]
     },
-    "typeRoots": [
-      "./@types"
-    ],
+    "typeRoots": ["./@types"],
     "incremental": true,
     "skipLibCheck": true,
     "strictNullChecks": true,
@@ -36,6 +28,6 @@
     "strictBindCallApply": false,
     "forceConsistentCasingInFileNames": false,
     "noFallthroughCasesInSwitch": false,
-    "useDefineForClassFields": true,
+    "useDefineForClassFields": true
   }
 }

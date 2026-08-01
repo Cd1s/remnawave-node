@@ -1,21 +1,21 @@
-import { ChannelCredentials } from 'nice-grpc';
 import { experimental } from '@grpc/grpc-js';
+import { ChannelCredentials } from 'nice-grpc';
 
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { ScheduleModule } from '@nestjs/schedule';
 import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
+import { ScheduleModule } from '@nestjs/schedule';
 
 import { XtlsSdkNestjsModule } from '@remnawave/xtls-sdk-nestjs';
 
+import { configSchema, Env } from '@common/config/app-config';
+import { getJWTConfig } from '@common/config/jwt/jwt.config';
 import { JwtStrategy } from '@common/guards/jwt-guards/strategies/validate-token';
 import { AbstractUdsResolver } from '@common/utils/unix-abstract.resolver';
 import { validateEnvConfig } from '@common/utils/validate-env-config';
-import { configSchema, Env } from '@common/config/app-config';
-import { getJWTConfig } from '@common/config/jwt/jwt.config';
 
-import { RemnawaveNodeModules } from './modules/remnawave-node.modules';
 import { InternalModule } from './modules/internal/internal.module';
+import { RemnawaveNodeModules } from './modules/remnawave-node.modules';
 
 experimental.registerResolver('unix-abstract', AbstractUdsResolver);
 

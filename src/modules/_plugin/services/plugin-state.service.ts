@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
-import { TorrentBlockerState, ConnectionDropState } from './states';
 import { IPlugins } from '../interfaces';
+import { TorrentBlockerState, ConnectionDropState } from './states';
 
 @Injectable()
 export class PluginStateService {

@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Post, UseFilters, UseGuards } from '@nestjs/common';
 
-import { JwtDefaultGuard } from '@common/guards/jwt-guards';
 import { HttpExceptionFilter } from '@common/exception';
+import { JwtDefaultGuard } from '@common/guards/jwt-guards';
 import { errorHandler } from '@common/helpers';
 import { STATS_CONTROLLER, STATS_ROUTES } from '@libs/contracts/api/controllers/stats';
 
@@ -26,8 +26,8 @@ import {
 import { GetUserIpListRequestDto, GetUserIpListResponseDto } from './dto/get-user-ip-list.dto';
 import { StatsService } from './stats.service';
 
-@UseFilters(HttpExceptionFilter)
 @UseGuards(JwtDefaultGuard)
+@UseFilters(HttpExceptionFilter)
 @Controller(STATS_CONTROLLER)
 export class StatsController {
     constructor(private readonly statsService: StatsService) {}
