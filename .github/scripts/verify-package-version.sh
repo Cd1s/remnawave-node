@@ -4,7 +4,7 @@ set -euo pipefail
 : "${EXPECTED_VERSION:?EXPECTED_VERSION is required}"
 PACKAGE_PATH="${PACKAGE_PATH:-package.json}"
 
-package_version="$(node -p "require(process.argv[1]).version" "$PACKAGE_PATH")"
+package_version="$(node -p "require(require('node:path').resolve(process.argv[1])).version" "$PACKAGE_PATH")"
 if [ "$package_version" != "$EXPECTED_VERSION" ]; then
     echo "release_sync=failed reason=package_version_mismatch expected=$EXPECTED_VERSION actual=$package_version" >&2
     exit 1
