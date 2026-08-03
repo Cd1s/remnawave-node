@@ -43,8 +43,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote add upstream https://github.com/remnawave/node.git
-          git fetch upstream main
-          git fetch upstream "refs/tags/${{ steps.release.outputs.tag }}:refs/tags/upstream-release-${{ steps.release.outputs.tag }}"
+          git fetch --no-tags upstream main
+          git fetch --no-tags upstream "refs/tags/${{ steps.release.outputs.tag }}:refs/tags/upstream-release-${{ steps.release.outputs.tag }}"
           bash .github/scripts/upstream-sync-lib.sh merge
       - name: Verify package version from official release commit
         if: steps.sync.outcome == 'success'
