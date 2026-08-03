@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - singbox
+    paths-ignore:
+      - '.github/**'
   pull_request:
     branches:
       - singbox
