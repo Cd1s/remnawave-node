@@ -25,11 +25,11 @@ jobs:
         with:
           ref: singbox
           fetch-depth: 0
-          token: ${{ secrets.WORKFLOW_TOKEN || secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.WORKFLOW_TOKEN }}
       - name: Resolve official latest stable release
         id: release
         env:
-          GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
           UPSTREAM_REPO: remnawave/node
           UPSTREAM_SYNC_REPORT_PATH: ${{ runner.temp }}/upstream-sync-report.md
         run: bash .github/scripts/upstream-sync-lib.sh resolve
@@ -89,8 +89,9 @@ jobs:
       - name: Verify write capabilities before any image build
         if: steps.sync.outcome == 'success'
         env:
-          GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
           WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
+          PACKAGE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           UPSTREAM_SYNC_REPORT_PATH: ${{ runner.temp }}/upstream-sync-report.md
         run: bash .github/scripts/upstream-sync-lib.sh preflight
@@ -119,7 +120,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.WORKFLOW_TOKEN || secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.WORKFLOW_TOKEN }}
       - uses: docker/build-push-action@v6
         if: steps.sync.outcome == 'success'
         with:
@@ -137,7 +138,7 @@ jobs:
       - name: Sync official fork Release
         if: steps.sync.outcome == 'success'
         env:
-          GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
           FORK_REPO: ${{ github.repository }}
           FORK_COMMIT: ${{ steps.source.outputs.sha }}
           UPSTREAM_REPO: remnawave/node
