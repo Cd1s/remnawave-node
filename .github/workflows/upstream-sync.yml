@@ -94,29 +94,19 @@ jobs:
         if: steps.sync.outcome == 'success'
         env:
           GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
-          GITHUB_TOKEN: ${{ github.token }}
           WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
           PACKAGE_TOKEN: ${{ github.token }}
-          WORKFLOW_CHANGED: ${{ steps.sync.outputs.workflow_changed }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           UPSTREAM_SYNC_REPORT_PATH: ${{ runner.temp }}/upstream-sync-report.md
         run: |
           set -euo pipefail
-          push_token="$GITHUB_TOKEN"
-          if [ "$WORKFLOW_CHANGED" = true ]; then
-            test -n "$WORKFLOW_TOKEN" || { echo 'upstream_sync=failed reason=missing_WORKFLOW_TOKEN workflow_files_changed' >&2; exit 1; }
-            push_token="$WORKFLOW_TOKEN"
-          fi
-          if [ "$push_token" = "$GITHUB_TOKEN" ]; then
-            bash .github/scripts/upstream-sync-lib.sh preflight
-          else
-            git config --unset-all http.https://github.com/.extraheader || true
-            auth_header="$(printf 'x-access-token:%s' "$push_token" | base64 | tr -d '\n')"
+          test -n "$WORKFLOW_TOKEN"
+          git config --local --unset-all http.https://github.com/.extraheader || true
+          auth_header="$(printf 'x-access-token:%s' "$WORKFLOW_TOKEN" | base64 | tr -d '\n')"
             GIT_CONFIG_COUNT=1 \
             GIT_CONFIG_KEY_0=http.https://github.com/.extraheader \
             GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth_header" \
-            bash .github/scripts/upstream-sync-lib.sh preflight
-          fi
+          bash .github/scripts/upstream-sync-lib.sh preflight
 
       - name: Resolve final fork commit and version
         id: source
@@ -127,26 +117,16 @@ jobs:
       - name: Push tested merge
         if: steps.sync.outcome == 'success'
         env:
-          GITHUB_TOKEN: ${{ github.token }}
           WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
-          WORKFLOW_CHANGED: ${{ steps.sync.outputs.workflow_changed }}
         run: |
           set -euo pipefail
-          push_token="$GITHUB_TOKEN"
-          if [ "$WORKFLOW_CHANGED" = true ]; then
-            test -n "$WORKFLOW_TOKEN" || { echo 'upstream_sync=failed reason=missing_WORKFLOW_TOKEN workflow_files_changed' >&2; exit 1; }
-            push_token="$WORKFLOW_TOKEN"
-          fi
-          if [ "$push_token" = "$GITHUB_TOKEN" ]; then
-            git push origin HEAD:singbox
-          else
-            git config --unset-all http.https://github.com/.extraheader || true
-            auth_header="$(printf 'x-access-token:%s' "$push_token" | base64 | tr -d '\n')"
+          test -n "$WORKFLOW_TOKEN"
+          git config --local --unset-all http.https://github.com/.extraheader || true
+          auth_header="$(printf 'x-access-token:%s' "$WORKFLOW_TOKEN" | base64 | tr -d '\n')"
             GIT_CONFIG_COUNT=1 \
             GIT_CONFIG_KEY_0=http.https://github.com/.extraheader \
             GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth_header" \
-            git push origin HEAD:singbox
-          fi
+          git push origin HEAD:singbox
       - name: Verify pushed final commit
         if: steps.sync.outcome == 'success'
         env:
