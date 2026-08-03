@@ -88,6 +88,7 @@ export class PluginService {
 
             this.syncConnectionDrop(pluginData, sharedMap);
             this.syncTorrentBlocker(pluginData, sharedMap);
+            this.syncPreStart(pluginData);
 
             await this.syncIngressFilter(pluginData, sharedMap);
             await this.syncEgressFilter(pluginData, sharedMap);
@@ -143,6 +144,25 @@ export class PluginService {
         this.state.connectionDrop.setWhitelistIps(ips);
 
         this.logger.log(`[PLUGIN] Connection-Drop: ${ips.length} whitelisted IPs synced.`);
+    }
+
+    private syncPreStart(pluginData: TNodePlugin): void {
+        if (!pluginData.preStart) return;
+        if (!pluginData.preStart.enabled) return;
+        if (!this.state.plugins.preStart) return;
+
+        const cleanupSockets = pluginData.preStart.cleanupSockets;
+
+        this.state.preStart.configure({
+            enabled: pluginData.preStart.enabled,
+            cleanupSockets,
+        });
+
+        const { enabled, files } = this.state.preStart.cleanupSocketsConfig;
+
+        this.logger.log(
+            `[PLUGIN] Pre-Start: socket cleanup ${enabled ? `enabled, ${files.length} path(s)` : 'disabled'}.`,
+        );
     }
 
     private async syncIngressFilter(

@@ -44,14 +44,7 @@ export class XrayProcessService {
         ]);
     }
 
-    public async restart(): Promise<void> {
-        await execFileAsync(XrayProcessService.S6_SVC, [
-            '-wd',
-            '-T',
-            String(XrayProcessService.DOWN_TIMEOUT_MS),
-            '-d',
-            this.serviceDir,
-        ]);
+    public async start(): Promise<void> {
         await execFileAsync(XrayProcessService.S6_SVC, [
             '-wu',
             '-T',

@@ -120,7 +120,7 @@ Fork commit: ${FORK_COMMIT}
 CI run: ${CI_RUN_URL}
 
 This is a fork release with the official version/tag and the maintained Sing-box/AnyTLS adaptations."
-    gh release create "$UPSTREAM_RELEASE_TAG" --repo "$FORK_REPO" --target "$FORK_COMMIT" --title "v${UPSTREAM_RELEASE_VERSION}" --notes "$notes"
+    gh release create "$UPSTREAM_RELEASE_TAG" --repo "$FORK_REPO" --target "$FORK_COMMIT" --title "$UPSTREAM_RELEASE_TAG" --notes "$notes"
     echo "release_sync=created tag=${UPSTREAM_RELEASE_TAG} commit=${FORK_COMMIT}"
 }
 

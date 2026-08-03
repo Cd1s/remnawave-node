@@ -18,6 +18,7 @@ import { StartXrayCommand } from '@libs/contracts/commands';
 import { CORE_TYPE, KNOWN_ERRORS } from '@libs/contracts/constants';
 
 import { ResetPluginsCommand } from '../_plugin/commands/reset-plugins/reset-plugins.command';
+import { RunPreStartCommand } from '../_plugin/commands/run-pre-start/run-pre-start.command';
 import { GetTorrentBlockerStateQuery } from '../_plugin/queries/get-torrent-blocker-state';
 import { CoreStateService } from '../core/core-state.service';
 import { SingBoxService } from '../core/singbox.service';
@@ -425,7 +426,11 @@ export class XrayService implements OnApplicationBootstrap {
         error: string | null;
     }> {
         try {
-            await this.xrayProcess.restart();
+            await this.xrayProcess.stop();
+
+            await this.commandBus.execute(new RunPreStartCommand());
+
+            await this.xrayProcess.start();
 
             return { error: null };
         } catch (error) {

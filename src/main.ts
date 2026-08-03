@@ -145,6 +145,11 @@ async function bootstrap(): Promise<void> {
             )) +
             '\n',
     );
+
+    if (import.meta.webpackHot) {
+        import.meta.webpackHot.accept();
+        import.meta.webpackHot.dispose(() => app.close());
+    }
 }
 
 void bootstrap();

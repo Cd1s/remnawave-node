@@ -59,7 +59,7 @@ export class XrayWebhookHandler implements IEventHandler<XrayWebhookEvent> {
                     `[TORRENT-BLOCKER] IP: ${ip}, user: ${webhook.email}, blocked: ${blocked}, duration: ${blockDuration}s`,
                 );
             } catch (error) {
-                this.logger.error(`Failed to block IP ${ip}:`, error);
+                this.logger.error(`Failed to block IP ${ip}: ${error}`);
             }
 
             const report: TorrentBlockerReportModel = {
