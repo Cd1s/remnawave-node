@@ -92,7 +92,7 @@ jobs:
       - name: Verify write capabilities before any image build
         if: steps.sync.outcome == 'success' && steps.sync.outputs.updated == 'true'
         env:
-          GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
+          GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN || secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
           PACKAGE_PUBLISH_REQUIRED: true
@@ -154,7 +154,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.WORKFLOW_TOKEN }}
+          password: ${{ secrets.WORKFLOW_TOKEN || secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@v6
         if: steps.sync.outcome == 'success' && steps.sync.outputs.updated == 'true'
         with:
@@ -172,7 +172,7 @@ jobs:
       - name: Sync official fork Release
         if: steps.sync.outcome == 'success' && steps.sync.outputs.updated == 'true'
         env:
-          GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
+          GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN || secrets.GITHUB_TOKEN }}
           FORK_REPO: ${{ github.repository }}
           FORK_COMMIT: ${{ steps.source.outputs.sha }}
           UPSTREAM_REPO: remnawave/node
