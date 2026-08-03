@@ -11,6 +11,42 @@ if [ "${1:-}" = merge ] && [ "${2:-}" = --abort ] && [ "${FAKE_ABORT:-0}" = 1 ];
 exec "$REAL_GIT" "$@"
 EOF
 chmod +x "$mock_bin/git"; }
+test_historical_tag_collision_fetch_is_safe() {
+    fixture_root="$(mktemp -d)"
+    repo="$fixture_root/repo"
+    upstream_source="$fixture_root/upstream-source"
+    upstream="$fixture_root/upstream.git"
+    mkdir -p "$repo" "$upstream_source"
+    git init -q "$repo"
+    git -C "$repo" config user.name test
+    git -C "$repo" config user.email test@example.invalid
+    git -C "$repo" checkout -q -b singbox
+    printf 'fork\n' >"$repo/state"
+    git -C "$repo" add state
+    git -C "$repo" commit -q -m fork
+    fork_tag_sha="$(git -C "$repo" rev-parse HEAD)"
+    git -C "$repo" tag 3.2.0
+    git init -q "$upstream_source"
+    git -C "$upstream_source" config user.name upstream
+    git -C "$upstream_source" config user.email upstream@example.invalid
+    git -C "$upstream_source" checkout -q -b main
+    printf 'upstream\n' >"$upstream_source/state"
+    git -C "$upstream_source" add state
+    git -C "$upstream_source" commit -q -m upstream
+    upstream_sha="$(git -C "$upstream_source" rev-parse HEAD)"
+    git -C "$upstream_source" tag 3.2.0
+    git init -q --bare "$upstream"
+    git -C "$upstream_source" remote add origin "$upstream"
+    git -C "$upstream_source" push -q origin main refs/tags/3.2.0
+    git -C "$repo" remote add upstream "$upstream"
+
+    # RED: this is the previous workflow command and must fail on a fork-owned tag collision.
+    git -C "$repo" fetch --no-tags upstream main >/dev/null 2>&1 || return 1
+    [ "$(git -C "$repo" rev-parse refs/tags/3.2.0)" = "$fork_tag_sha" ] || return 1
+    [ "$(git -C "$repo" rev-parse refs/remotes/upstream/main)" = "$upstream_sha" ] || return 1
+    ! file_contains "$WORKFLOW" 'git fetch --force' || return 1
+    ! file_contains "$WORKFLOW" 'refs/tags/${{ steps.release.outputs.tag }}:refs/tags/upstream-release-${{ steps.release.outputs.tag }}'
+}
 test_resolver_stable() { make_repo; cat >"$mock_bin/gh" <<'EOF'
 #!/usr/bin/env bash
 set -eu
@@ -22,7 +58,7 @@ exit 2
 EOF
 chmod +x "$mock_bin/gh"; output="$fixture_root/output"; result="$(cd "$repo"; PATH="$mock_bin:$PATH" GIT_BIN="$mock_bin/git" REAL_GIT="$real_git" FAKE_UPSTREAM_COMMIT="$upstream_sha" FAKE_TAG=3.2.0 UPSTREAM_REPO=remnawave/test GITHUB_OUTPUT="$output" bash "$LIB" resolve 2>&1)" || return 1; contains "$result" 'tag=3.2.0' && contains "$result" 'version=3.2.0'; }
  test_workflow_and_dual_core_contract() { file_contains "$WORKFLOW" '*/5 * * * *' || return 1; [ -z "$(awk '/^jobs:/{exit} /\$\{\{ runner\.temp \}\}/{print NR}' "$WORKFLOW")" ] || return 1; file_contains "$WORKFLOW" 'workflow_dispatch:' || return 1; file_contains "$WORKFLOW" 'cancel-in-progress: false' || return 1; file_contains "$WORKFLOW" 'WORKFLOW_TOKEN' || return 1; file_contains "$WORKFLOW" 'upstream-sync-lib.sh preflight' || return 1; file_contains "$WORKFLOW" 'upstream-sync-lib.sh package' || return 1; file_contains "$WORKFLOW" 'actions/upload-artifact@v4' || return 1; file_contains "$WORKFLOW" 'git push origin HEAD:singbox' || return 1; file_contains "$WORKFLOW" 'validate:dual-core'; preflight_line="$(grep -n -m1 'upstream-sync-lib.sh preflight' "$WORKFLOW" | cut -d: -f1)"; docker_line="$(grep -n -m1 'docker/build-push-action' "$WORKFLOW" | cut -d: -f1)"; [ "$preflight_line" -lt "$docker_line" ]; }
-test_upstream_tag_fetch_is_namespaced() { file_contains "$WORKFLOW" 'git fetch --no-tags upstream main' && file_contains "$WORKFLOW" 'git fetch --no-tags upstream "refs/tags/${{ steps.release.outputs.tag }}:refs/tags/upstream-release-${{ steps.release.outputs.tag }}"'; }
+test_upstream_main_fetch_does_not_import_tags() { file_contains "$WORKFLOW" 'git fetch --no-tags upstream main' && ! file_contains "$WORKFLOW" 'refs/tags/${{ steps.release.outputs.tag }}:refs/tags/upstream-release-${{ steps.release.outputs.tag }}'; }
 test_checkout_and_readonly_resolver_use_builtin_token() { file_contains "$WORKFLOW" 'token: ${{ github.token }}' && file_contains "$WORKFLOW" 'GH_TOKEN: ${{ github.token }}' && file_contains "$WORKFLOW" 'WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}'; }
 test_push_uses_process_scoped_workflow_auth() { file_contains "$WORKFLOW" 'GIT_CONFIG_KEY_0=http.https://github.com/.extraheader' && file_contains "$WORKFLOW" 'GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth_header"' && file_contains "$WORKFLOW" 'GH_TOKEN: ${{ github.token }}' && file_contains "$WORKFLOW" 'WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}' && file_contains "$WORKFLOW" 'GITHUB_TOKEN: ${{ github.token }}' && file_contains "$WORKFLOW" 'WORKFLOW_CHANGED: ${{ steps.sync.outputs.workflow_changed }}' && file_contains "$WORKFLOW" 'push_token="$GITHUB_TOKEN"' && file_contains "$WORKFLOW" 'push_token="$WORKFLOW_TOKEN"' && ! file_contains "$WORKFLOW" 'PACKAGE_TOKEN' && file_contains "$WORKFLOW" 'git config --unset-all http.https://github.com/.extraheader || true' && ! file_contains "$WORKFLOW" 'Configure ephemeral GitHub auth for push'; }
 test_push_auth_never_duplicates_checkout_extraheader() { file_contains "$WORKFLOW" 'GITHUB_TOKEN: ${{ github.token }}' || return 1; file_contains "$WORKFLOW" 'WORKFLOW_CHANGED: ${{ steps.sync.outputs.workflow_changed }}' || return 1; file_contains "$WORKFLOW" 'push_token=' || return 1; [ "$(grep -Fc 'git config --unset-all http.https://github.com/.extraheader || true' "$WORKFLOW")" -eq 2 ] || return 1; [ "$(grep -Fc 'GIT_CONFIG_COUNT=1' "$WORKFLOW")" -eq 2 ] || return 1; }
@@ -88,4 +124,4 @@ fi
 exit 2
 EOF
 chmod +x "$mock_bin/gh"; result="$(cd "$repo"; PATH="$mock_bin:$PATH" GITHUB_REPOSITORY=Cd1s/test WORKFLOW_TOKEN=present GH_TOKEN=present PACKAGE_TOKEN=present SKIP_GIT_DRY_RUN=true GITHUB_ACTIONS=true bash "$LIB" preflight 2>&1)" && return 1; contains "$result" 'reason=contents_write_denied'; }
-run_case() { if "$1"; then pass "$1"; else fail "$1"; fi; }; run_case test_resolver_stable; run_case test_workflow_and_dual_core_contract; run_case test_upstream_tag_fetch_is_namespaced; run_case test_checkout_and_readonly_resolver_use_builtin_token; run_case test_push_uses_process_scoped_workflow_auth; run_case test_push_auth_never_duplicates_checkout_extraheader; run_case test_capability_preflight_contract; run_case test_capability_preflight_rejects_forbidden_probes; run_case test_workflow_diff_without_token_fails_closed; [ "$failures" -eq 0 ] || exit 1; printf 'all upstream hardening tests passed\n'
+run_case() { if "$1"; then pass "$1"; else fail "$1"; fi; }; run_case test_resolver_stable; run_case test_historical_tag_collision_fetch_is_safe; run_case test_workflow_and_dual_core_contract; run_case test_upstream_main_fetch_does_not_import_tags; run_case test_checkout_and_readonly_resolver_use_builtin_token; run_case test_push_uses_process_scoped_workflow_auth; run_case test_push_auth_never_duplicates_checkout_extraheader; run_case test_capability_preflight_contract; run_case test_capability_preflight_rejects_forbidden_probes; run_case test_workflow_diff_without_token_fails_closed; [ "$failures" -eq 0 ] || exit 1; printf 'all upstream hardening tests passed\n'
