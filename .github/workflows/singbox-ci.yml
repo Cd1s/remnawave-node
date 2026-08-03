@@ -50,18 +50,23 @@ jobs:
       - run: npm run typecheck
 
       - name: Check dual-core files
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
         run: |
-          git fetch --no-tags https://github.com/remnawave/node.git \
-            main:refs/remotes/upstream/main
+          set -euo pipefail
+          base_sha="${BASE_SHA:-}"
+          if [ -z "$base_sha" ] || [ "$base_sha" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+            base_sha="$(git rev-parse HEAD^ 2>/dev/null || git rev-parse HEAD)"
+          fi
           mapfile -t format_files < <(
-            git diff --name-only --diff-filter=ACMR upstream/main...HEAD -- \
+            git diff --name-only --diff-filter=ACMR "$base_sha"...HEAD -- \
               '*.ts' '*.tsx' '*.js' '*.mjs' '*.json' '*.yml' '*.yaml'
           )
           if ((${#format_files[@]})); then
             npx oxfmt --check "${format_files[@]}"
           fi
           mapfile -t lint_files < <(
-            git diff --name-only --diff-filter=ACMR upstream/main...HEAD -- \
+            git diff --name-only --diff-filter=ACMR "$base_sha"...HEAD -- \
               '*.ts' '*.tsx' '*.js' '*.mjs'
           )
           if ((${#lint_files[@]})); then

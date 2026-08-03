@@ -3,6 +3,7 @@ set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCRIPT="$ROOT/.github/scripts/sync-release.sh"
+LIB="$ROOT/.github/scripts/upstream-sync-lib.sh"
 MERGE_SCRIPT="$ROOT/.github/scripts/merge-upstream.sh"
 VERSION_SCRIPT="$ROOT/.github/scripts/verify-package-version.sh"
 WORKFLOW="$ROOT/.github/workflows/upstream-sync.yml"
@@ -43,7 +44,47 @@ make_merge_fixture() {
     printf 'fork webpack adaptation\n' >"$repo/webpack.config.js"; git -C "$repo" add webpack.config.js; git -C "$repo" commit -q -m fork-adaptation
     git -C "$repo" switch -q -c upstream-work "$base_sha"; printf '{"version":"3.0.0"}\n' >"$repo/package.json"; git -C "$repo" rm -q webpack.config.js; printf 'rspack official config\n' >"$repo/rspack.config.mjs"; git -C "$repo" add package.json rspack.config.mjs; git -C "$repo" commit -q -m official-3.0.0; git -C "$repo" branch upstream-main; git -C "$repo" switch -q singbox
 }
+make_up_to_date_fixture() {
+    fixture_root="$(mktemp -d)"; repo="$fixture_root/repo"; output_file="$fixture_root/output"; mkdir -p "$repo"; git init -q "$repo"; git -C "$repo" config user.name test; git -C "$repo" config user.email test@example.invalid; git -C "$repo" checkout -q -b singbox
+    printf '{"version":"3.0.0"}\n' >"$repo/package.json"; git -C "$repo" add package.json; git -C "$repo" commit -q -m official-3.0.0; git -C "$repo" branch upstream-release
+    printf 'sing-box fork adaptation\n' >"$repo/fork-adaptation"; git -C "$repo" add fork-adaptation; git -C "$repo" commit -q -m fork-adaptation
+}
 test_resolve() { make_repo; output_file="$fixture_root/output"; ( cd "$repo"; : >"$output_file"; PATH="$mock_bin:$PATH" GH_BEHAVIOR=resolve GH_CALL_LOG="$call_log" GITHUB_OUTPUT="$output_file" UPSTREAM_REPO=remnawave/node bash "$SCRIPT" resolve ) >/dev/null 2>&1 || return 1; assert_file_contains "$output_file" 'tag=3.0.0' && assert_file_contains "$output_file" 'version=3.0.0'; }
+test_official_release_already_contained_is_noop() {
+    make_up_to_date_fixture
+    before_sha="$(git -C "$repo" rev-parse HEAD)"
+    result="$(cd "$repo" && : >"$output_file" && GITHUB_OUTPUT="$output_file" UPSTREAM_REF=upstream-release bash "$LIB" merge 2>&1)" || return 1
+    assert_file_contains "$output_file" 'updated=false' || return 1
+    assert_contains "$result" 'upstream_sync=up_to_date' || return 1
+    [ "$(git -C "$repo" rev-parse HEAD)" = "$before_sha" ] || return 1
+    [ -z "$(git -C "$repo" status --porcelain)" ] || return 1
+    [ "$(git -C "$repo" tag --list)" = '' ] || return 1
+}
+test_noop_workflow_skips_package_build_push_and_release() {
+    gate="if: steps.sync.outcome == 'success' && steps.sync.outputs.updated == 'true'"
+    for marker in \
+        'Verify package version from official release commit' \
+        'npm ci --no-audit --no-fund' \
+        'npm run validate:dual-core' \
+        'npm run build' \
+        'npm run trace' \
+        'npm run typecheck' \
+        'npm run check' \
+        'Check dual-core files' \
+        'Verify write capabilities before any image build' \
+        'Resolve final fork commit and version' \
+        'Push tested merge' \
+        'Verify pushed final commit' \
+        'docker/setup-qemu-action' \
+        'docker/setup-buildx-action' \
+        'docker/login-action' \
+        'docker/build-push-action' \
+        'Sync official fork Release'; do
+        step_line="$(grep -n -m1 -F -- "$marker" "$WORKFLOW" | cut -d: -f1)" || return 1
+        condition="$(sed -n "${step_line},$((step_line + 8))p" "$WORKFLOW" | grep -m1 -F -- 'if:')" || return 1
+        [ "$condition" = "        $gate" ] || return 1
+    done
+}
 test_historical_skip() { make_repo historical; historical_sha="$(git -C "$repo" rev-parse refs/tags/2.8.0)"; output="$(run_sync existing 2>&1)" || return 1; assert_contains "$output" 'release_sync=skipped' || return 1; [ "$(git -C "$repo" rev-parse refs/tags/2.8.0)" = "$historical_sha" ] || return 1; ! grep -Fq 'release create' "$call_log"; }
 test_create() { make_repo; output="$(run_sync missing 2>&1)" || return 1; assert_contains "$output" 'release_sync=created' || return 1; grep -Fq "release create release create 2.8.0 --repo Cd1s/remnawave-test --target $new_sha --title 2.8.0" "$call_log"; }
 test_superseded_sync_is_skipped_without_release_side_effects() { make_repo; output="$(run_sync_commit missing "$old_sha" 2>&1)" || return 1; assert_contains "$output" 'release_sync=skipped reason=superseded_by_newer_sync' || return 1; [ ! -s "$call_log" ]; }
@@ -63,6 +104,6 @@ test_workflow_contract() {
 }
 test_preflight_contract() { assert_file_contains "$WORKFLOW" 'GH_TOKEN: ${{ github.token }}' && assert_file_contains "$WORKFLOW" 'GITHUB_TOKEN: ${{ github.token }}' && assert_file_contains "$WORKFLOW" 'WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}' && assert_file_contains "$WORKFLOW" 'WORKFLOW_CHANGED: ${{ steps.sync.outputs.workflow_changed }}' && assert_file_contains "$WORKFLOW" 'push_token="$GITHUB_TOKEN"' && assert_file_contains "$WORKFLOW" 'push_token="$WORKFLOW_TOKEN"' && ! grep -Fq -- 'PACKAGE_TOKEN' "$WORKFLOW" && ! grep -Fq -- 'permissions.push' "$WORKFLOW" && ! grep -Fq -- 'actions/workflows' "$ROOT/.github/scripts/upstream-sync-lib.sh" && ! grep -Fq -- 'user/packages' "$ROOT/.github/scripts/upstream-sync-lib.sh" && ! grep -Fq -- 'SKIP_GIT_DRY_RUN' "$ROOT/.github/scripts/upstream-sync-lib.sh"; }
 run_case() { if "$1"; then pass "$1"; else fail "$1"; fi; }
-run_case test_resolve; run_case test_historical_skip; run_case test_create; run_case test_superseded_sync_is_skipped_without_release_side_effects; run_case test_diverged_branch_fails_closed; run_case test_different_tag_fails; run_case test_missing_tag_fails; run_case test_query_fails; run_case test_structure_fails; run_case test_version_mismatch; run_case test_version_match; run_case test_version_match_repo_relative; run_case test_conflict_report_and_safe_delete; run_case test_dual_core_contract; run_case test_workflow_contract; run_case test_preflight_contract
+run_case test_resolve; run_case test_official_release_already_contained_is_noop; run_case test_noop_workflow_skips_package_build_push_and_release; run_case test_historical_skip; run_case test_create; run_case test_superseded_sync_is_skipped_without_release_side_effects; run_case test_diverged_branch_fails_closed; run_case test_different_tag_fails; run_case test_missing_tag_fails; run_case test_query_fails; run_case test_structure_fails; run_case test_version_mismatch; run_case test_version_match; run_case test_version_match_repo_relative; run_case test_conflict_report_and_safe_delete; run_case test_dual_core_contract; run_case test_workflow_contract; run_case test_preflight_contract
 [ "$failures" -eq 0 ] || exit 1
 printf 'all sync contract tests passed\n'
