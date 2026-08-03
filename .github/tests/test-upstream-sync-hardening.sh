@@ -58,11 +58,11 @@ exit 2
 EOF
 chmod +x "$mock_bin/gh"; output="$fixture_root/output"; result="$(cd "$repo"; PATH="$mock_bin:$PATH" GIT_BIN="$mock_bin/git" REAL_GIT="$real_git" FAKE_UPSTREAM_COMMIT="$upstream_sha" FAKE_TAG=3.2.0 UPSTREAM_REPO=remnawave/test GITHUB_OUTPUT="$output" bash "$LIB" resolve 2>&1)" || return 1; contains "$result" 'tag=3.2.0' && contains "$result" 'version=3.2.0'; }
 test_singbox_ci_dual_core_check_uses_checkout_history() { ! file_contains "$SINGBOX_CI" 'git fetch --no-tags https://github.com/remnawave/node.git' || return 1; ! file_contains "$SINGBOX_CI" 'upstream/main...HEAD' || return 1; file_contains "$SINGBOX_CI" 'BASE_SHA:' || return 1; file_contains "$SINGBOX_CI" 'git diff --name-only --diff-filter=ACMR "$base_sha"...HEAD'; }
- test_workflow_and_dual_core_contract() { file_contains "$WORKFLOW" '*/5 * * * *' || return 1; [ -z "$(awk '/^jobs:/{exit} /\$\{\{ runner\.temp \}\}/{print NR}' "$WORKFLOW")" ] || return 1; file_contains "$WORKFLOW" 'workflow_dispatch:' || return 1; file_contains "$WORKFLOW" 'cancel-in-progress: false' || return 1; file_contains "$WORKFLOW" 'WORKFLOW_TOKEN' || return 1; file_contains "$WORKFLOW" 'upstream-sync-lib.sh preflight' || return 1; file_contains "$WORKFLOW" 'upstream-sync-lib.sh package' || return 1; file_contains "$WORKFLOW" 'actions/upload-artifact@v4' || return 1; file_contains "$WORKFLOW" 'git push origin HEAD:singbox' || return 1; file_contains "$WORKFLOW" 'validate:dual-core'; preflight_line="$(grep -n -m1 'upstream-sync-lib.sh preflight' "$WORKFLOW" | cut -d: -f1)"; docker_line="$(grep -n -m1 'docker/build-push-action' "$WORKFLOW" | cut -d: -f1)"; [ "$preflight_line" -lt "$docker_line" ]; }
+ test_workflow_and_dual_core_contract() { file_contains "$WORKFLOW" '*/5 * * * *' || return 1; [ -z "$(awk '/^jobs:/{exit} /\$\{\{ runner\.temp \}\}/{print NR}' "$WORKFLOW")" ] || return 1; file_contains "$WORKFLOW" 'workflow_dispatch:' || return 1; file_contains "$WORKFLOW" 'cancel-in-progress: false' || return 1; file_contains "$WORKFLOW" 'WORKFLOW_TOKEN' || return 1; file_contains "$WORKFLOW" 'upstream-sync-lib.sh preflight' || return 1; file_contains "$WORKFLOW" 'upstream-sync-lib.sh package' || return 1; file_contains "$WORKFLOW" 'actions/upload-artifact@v4' || return 1; file_contains "$WORKFLOW" 'git push origin HEAD:singbox' || return 1; file_contains "$WORKFLOW" 'validate:dual-core' || return 1; file_contains "$WORKFLOW" 'PACKAGE_PUBLISH_REQUIRED: true' || return 1; preflight_line="$(grep -n -m1 'upstream-sync-lib.sh preflight' "$WORKFLOW" | cut -d: -f1)"; docker_line="$(grep -n -m1 'docker/build-push-action' "$WORKFLOW" | cut -d: -f1)"; [ "$preflight_line" -lt "$docker_line" ]; }
 test_upstream_main_fetch_does_not_import_tags() { file_contains "$WORKFLOW" 'git fetch --no-tags upstream main' && ! file_contains "$WORKFLOW" 'refs/tags/${{ steps.release.outputs.tag }}:refs/tags/upstream-release-${{ steps.release.outputs.tag }}'; }
-test_checkout_and_readonly_resolver_use_builtin_token() { file_contains "$WORKFLOW" 'token: ${{ github.token }}' && file_contains "$WORKFLOW" 'GH_TOKEN: ${{ github.token }}' && file_contains "$WORKFLOW" 'WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}'; }
-test_push_uses_process_scoped_workflow_auth() { file_contains "$WORKFLOW" 'GIT_CONFIG_KEY_0=http.https://github.com/.extraheader' && file_contains "$WORKFLOW" 'GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth_header"' && file_contains "$WORKFLOW" 'GH_TOKEN: ${{ github.token }}' && file_contains "$WORKFLOW" 'WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}' && file_contains "$WORKFLOW" 'GITHUB_TOKEN: ${{ github.token }}' && file_contains "$WORKFLOW" 'WORKFLOW_CHANGED: ${{ steps.sync.outputs.workflow_changed }}' && file_contains "$WORKFLOW" 'push_token="$GITHUB_TOKEN"' && file_contains "$WORKFLOW" 'push_token="$WORKFLOW_TOKEN"' && ! file_contains "$WORKFLOW" 'PACKAGE_TOKEN' && file_contains "$WORKFLOW" 'git config --unset-all http.https://github.com/.extraheader || true' && ! file_contains "$WORKFLOW" 'Configure ephemeral GitHub auth for push'; }
-test_push_auth_never_duplicates_checkout_extraheader() { file_contains "$WORKFLOW" 'GITHUB_TOKEN: ${{ github.token }}' || return 1; file_contains "$WORKFLOW" 'WORKFLOW_CHANGED: ${{ steps.sync.outputs.workflow_changed }}' || return 1; file_contains "$WORKFLOW" 'push_token=' || return 1; [ "$(grep -Fc 'git config --unset-all http.https://github.com/.extraheader || true' "$WORKFLOW")" -eq 2 ] || return 1; [ "$(grep -Fc 'GIT_CONFIG_COUNT=1' "$WORKFLOW")" -eq 2 ] || return 1; }
+test_checkout_and_readonly_resolver_use_builtin_token() { file_contains "$WORKFLOW" 'token: ${{ secrets.GITHUB_TOKEN }}' && ! file_contains "$WORKFLOW" 'token: ${{ secrets.WORKFLOW_TOKEN }}' && file_contains "$WORKFLOW" 'GH_TOKEN: ${{ github.token }}' && file_contains "$WORKFLOW" 'GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}' && file_contains "$WORKFLOW" 'WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}'; }
+test_push_uses_process_scoped_workflow_auth() { file_contains "$WORKFLOW" 'GIT_CONFIG_KEY_0=http.https://github.com/.extraheader' && file_contains "$WORKFLOW" 'GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth_header"' && file_contains "$WORKFLOW" 'GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}' && file_contains "$WORKFLOW" 'WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}' && file_contains "$WORKFLOW" 'GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}' && file_contains "$WORKFLOW" 'WORKFLOW_CHANGED: ${{ steps.sync.outputs.workflow_changed }}' && file_contains "$WORKFLOW" 'push_token="$GITHUB_TOKEN"' && file_contains "$WORKFLOW" 'push_token="$WORKFLOW_TOKEN"' && ! file_contains "$WORKFLOW" 'PACKAGE_TOKEN' && file_contains "$WORKFLOW" 'git config --unset-all http.https://github.com/.extraheader || true' && ! file_contains "$WORKFLOW" 'Configure ephemeral GitHub auth for push'; }
+test_push_auth_never_duplicates_checkout_extraheader() { file_contains "$WORKFLOW" 'GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}' || return 1; file_contains "$WORKFLOW" 'WORKFLOW_CHANGED: ${{ steps.sync.outputs.workflow_changed }}' || return 1; file_contains "$WORKFLOW" 'push_token=' || return 1; [ "$(grep -Fc 'git config --unset-all http.https://github.com/.extraheader || true' "$WORKFLOW")" -eq 2 ] || return 1; [ "$(grep -Fc 'GIT_CONFIG_COUNT=1' "$WORKFLOW")" -eq 2 ] || return 1; }
 test_capability_preflight_contract() { make_repo; call_log="$fixture_root/gh.log"; cat >"$mock_bin/gh" <<'EOF'
 #!/usr/bin/env bash
 set -eu
@@ -71,14 +71,14 @@ if [ "${1:-}" = api ]; then
     case "${2:-}" in
         repos/Cd1s/test) printf '{"id":123}\n' ;;
         repos/Cd1s/test/releases?per_page=1) printf '[]\n' ;;
-        user/packages*|repos/Cd1s/test/actions/workflows) exit 97 ;;
+        forbidden/packages*|repos/Cd1s/test/actions/workflows) exit 97 ;;
         *) exit 2 ;;
     esac
     exit 0
 fi
 exit 2
 EOF
-chmod +x "$mock_bin/gh"; result="$(cd "$repo"; PATH="$mock_bin:$PATH" GIT_BIN="$mock_bin/git" REAL_GIT="$real_git" GH_CALL_LOG="$call_log" GITHUB_REPOSITORY=Cd1s/test GH_TOKEN=github-token GITHUB_RUN_ID=node bash "$LIB" preflight 2>&1)" || return 1; contains "$result" 'capability_preflight=passed' || return 1; grep -Fq 'repos/Cd1s/test' "$call_log" || return 1; ! grep -Fq 'actions/workflows' "$call_log" && ! grep -Fq 'user/packages' "$call_log"; }
+chmod +x "$mock_bin/gh"; result="$(cd "$repo"; PATH="$mock_bin:$PATH" GIT_BIN="$mock_bin/git" REAL_GIT="$real_git" GH_CALL_LOG="$call_log" GITHUB_REPOSITORY=Cd1s/test GH_TOKEN=github-token GITHUB_RUN_ID=node bash "$LIB" preflight 2>&1)" || return 1; contains "$result" 'capability_preflight=passed' || return 1; grep -Fq 'repos/Cd1s/test' "$call_log" || return 1; ! grep -Fq 'actions/workflows' "$call_log" && ! grep -Fq 'forbidden/packages' "$call_log"; }
 test_capability_preflight_rejects_forbidden_probes() { make_repo; call_log="$fixture_root/gh.log"; cat >"$mock_bin/gh" <<'EOF'
 #!/usr/bin/env bash
 set -eu
@@ -94,7 +94,7 @@ if [ "${1:-}" = api ]; then
 fi
 exit 2
 EOF
-chmod +x "$mock_bin/gh"; result="$(cd "$repo"; PATH="$mock_bin:$PATH" GIT_BIN="$mock_bin/git" REAL_GIT="$real_git" GH_CALL_LOG="$call_log" GITHUB_REPOSITORY=Cd1s/test GH_TOKEN=github-token GITHUB_RUN_ID=node bash "$LIB" preflight 2>&1)" || return 1; contains "$result" 'capability_preflight=passed' || return 1; ! grep -Fq 'actions/workflows' "$call_log" && ! grep -Fq 'user/packages' "$call_log"; }
+chmod +x "$mock_bin/gh"; result="$(cd "$repo"; PATH="$mock_bin:$PATH" GIT_BIN="$mock_bin/git" REAL_GIT="$real_git" GH_CALL_LOG="$call_log" GITHUB_REPOSITORY=Cd1s/test GH_TOKEN=github-token GITHUB_RUN_ID=node bash "$LIB" preflight 2>&1)" || return 1; contains "$result" 'capability_preflight=passed' || return 1; ! grep -Fq 'actions/workflows' "$call_log" && ! grep -Fq 'forbidden/packages' "$call_log"; }
 test_workflow_diff_without_token_fails_closed() { make_repo; result="$(cd "$repo"; PATH="$mock_bin:$PATH" GITHUB_REPOSITORY=Cd1s/test WORKFLOW_CHANGED=true WORKFLOW_TOKEN= bash "$LIB" preflight 2>&1)" && return 1; contains "$result" 'reason=missing_WORKFLOW_TOKEN workflow_files_changed'; }
 test_capability_preflight_rejects_missing_workflow_token_v2() { make_repo; call_log="$fixture_root/gh.log"; cat >"$mock_bin/gh" <<'EOF'
 #!/usr/bin/env bash
@@ -104,7 +104,7 @@ if [ "${1:-}" = api ]; then
     case "${2:-}" in
         repos/Cd1s/test) printf '{"permissions":{"push":false}}\n' ;;
         repos/Cd1s/test/releases?per_page=1) printf '[]\n' ;;
-        user/packages*|repos/Cd1s/test/actions/workflows) printf '{}\n' ;;
+        forbidden/packages*|repos/Cd1s/test/actions/workflows) printf '{}\n' ;;
         *) exit 2 ;;
     esac
     exit 0
