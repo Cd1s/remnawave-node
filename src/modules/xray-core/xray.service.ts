@@ -2,7 +2,6 @@ import ems from 'enhanced-ms';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import pRetry from 'p-retry';
-import semver from 'semver';
 
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -24,6 +23,8 @@ import { CoreStateService } from '../core/core-state.service';
 import { SingBoxService } from '../core/singbox.service';
 import { InternalService } from '../internal/internal.service';
 import { GetInterfaceStatsQuery } from '../network-stats/queries/get-interface-stats/get-interface-stats.query';
+import { CoreLoaderService } from './core-loader.service';
+import { GeodataService } from './geodata.service';
 import {
     GetNodeHealthCheckResponseModel,
     StartXrayResponseModel,
@@ -53,6 +54,8 @@ export class XrayService implements OnApplicationBootstrap {
     constructor(
         @InjectXtls() private readonly xtlsSdk: XtlsApi,
         private readonly xrayProcess: XrayProcessService,
+        private readonly geodataService: GeodataService,
+        private readonly coreLoaderService: CoreLoaderService,
         private readonly internalService: InternalService,
         private readonly configService: ConfigService,
         private readonly queryBus: QueryBus,
@@ -66,7 +69,7 @@ export class XrayService implements OnApplicationBootstrap {
             xtlsApiSocketPath: this.configService.getOrThrow<string>('XTLS_API_SOCKET_PATH'),
         };
 
-        this.xrayPath = '/usr/local/bin/xray';
+        this.xrayPath = '/usr/local/bin/rw-core';
         this.xrayVersion = null;
 
         this.isXrayStartedProccesing = false;
@@ -77,7 +80,7 @@ export class XrayService implements OnApplicationBootstrap {
 
     async onApplicationBootstrap() {
         try {
-            this.xrayVersion = this.getXrayVersionFromEnv();
+            await this.refreshXrayVersion();
             this.nodeVersion = __RWNODE_VERSION__ ?? '0.0.0';
 
             if (!this.xrayProcess.isControlAvailable()) {
@@ -187,6 +190,9 @@ export class XrayService implements OnApplicationBootstrap {
                 CORE_TYPE.XRAY,
             );
 
+            await this.coreLoaderService.prepare(fullConfig.geodata);
+            await this.geodataService.prepare(fullConfig.geodata);
+
             const xrayProcess = await this.restartXrayProcess();
 
             if (xrayProcess.error) {
@@ -234,6 +240,8 @@ export class XrayService implements OnApplicationBootstrap {
 
             this.isXrayOnline = true;
             this.coreState.setActiveCore(CORE_TYPE.XRAY, true, this.xrayVersion);
+
+            await this.refreshXrayVersion();
 
             this.logger.log(`✔ XRay Core v${this.xrayVersion} is up and running.`);
 
@@ -361,28 +369,20 @@ export class XrayService implements OnApplicationBootstrap {
         }
     }
 
-    private getXrayVersionFromEnv(): null | string {
-        const version = semver.valid(semver.coerce(process.env.XRAY_CORE_VERSION));
+    private async refreshXrayVersion(): Promise<void> {
+        const version = await this.xrayProcess.getCoreVersion();
 
         if (version) {
             this.xrayVersion = version;
         }
-
-        return version;
     }
 
     public getXrayInfo(): {
         version: string | null;
         path: string;
     } {
-        const version = this.getXrayVersionFromEnv();
-
-        if (version) {
-            this.xrayVersion = version;
-        }
-
         return {
-            version: version,
+            version: this.xrayVersion,
             path: this.xrayPath,
         };
     }

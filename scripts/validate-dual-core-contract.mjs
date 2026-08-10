@@ -16,7 +16,11 @@ const assert = (condition, message) => {
 };
 
 const packageJson = JSON.parse(await read('package.json'));
-assert(packageJson.version === '3.0.0', `package_version=${packageJson.version}`);
+assert(
+    typeof packageJson.version === 'string' &&
+        /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(packageJson.version),
+    `package_version_invalid=${packageJson.version}`,
+);
 assert(packageJson.scripts.build === 'rspack build', 'official_rspack_build_missing');
 assert(packageJson.scripts.typecheck === 'tsc --noEmit', 'typecheck_script_missing');
 

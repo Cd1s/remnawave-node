@@ -1,4 +1,4 @@
-FROM node:24.18-trixie-slim AS build
+FROM node:24.19-trixie-slim AS build
 
 ARG RWNODE_VERSION
 ENV RWNODE_VERSION=${RWNODE_VERSION}
@@ -48,7 +48,7 @@ RUN go install \
     github.com/sagernet/sing-box/cmd/sing-box@${SINGBOX_CORE_VERSION}
 
 
-FROM node:24.18-trixie-slim
+FROM node:24.19-trixie-slim
 
 ARG S6_OVERLAY_VERSION=3.2.3.0
 
