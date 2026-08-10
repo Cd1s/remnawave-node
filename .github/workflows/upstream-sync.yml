@@ -5,6 +5,12 @@ name: Sync upstream
 # That prevents no-op GitHub Actions runs and their failure/cancellation notifications.
 on:
   workflow_dispatch:
+    inputs:
+      reconcile_release:
+        description: Reconcile a missing fork Release/image when the official commit is already contained
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -44,6 +50,7 @@ jobs:
         env:
           UPSTREAM_REF: ${{ steps.release.outputs.commit }}
           UPSTREAM_SYNC_REPORT_PATH: ${{ runner.temp }}/upstream-sync-report.md
+          RECONCILE_RELEASE: ${{ inputs.reconcile_release }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
