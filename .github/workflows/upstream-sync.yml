@@ -169,7 +169,7 @@ jobs:
         if: steps.sync.outcome == 'success' && steps.sync.outputs.updated == 'true'
         with:
           context: .
-          file: Dockerfile
+          file: docker/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
