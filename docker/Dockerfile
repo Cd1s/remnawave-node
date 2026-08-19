@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 FROM node:24.19-trixie-slim AS build
 
 ARG RWNODE_VERSION
@@ -12,7 +14,8 @@ COPY . .
 
 RUN npm run build \
     && npm run trace \
-    && find dist/node_modules/@lmdb -name '*.node' ! -name 'node.napi.glibc.node' -delete
+    && find dist/node_modules/@lmdb -name '*.node' ! -name 'node.napi.glibc.node' -delete \
+    && chmod +x dist/cli.js
 
 
 FROM alpine:3.21 AS xray
@@ -47,6 +50,25 @@ RUN go install \
     -tags with_v2ray_api,with_clash_api,with_quic,with_utls \
     github.com/sagernet/sing-box/cmd/sing-box@${SINGBOX_CORE_VERSION}
 
+FROM alpine:3.21 AS geocheck
+
+ARG GEOCHECK_VERSION=0.3.0
+ARG GEOCHECK_RELEASE_URL=https://github.com/remnawave/geocheck/releases/download
+ARG TARGETARCH
+
+RUN apk add --no-cache curl \
+    && cd /tmp \
+    && ARCHIVE="geocheck_linux_${TARGETARCH}.tar.gz" \
+    && curl -fsSL -O "${GEOCHECK_RELEASE_URL}/v${GEOCHECK_VERSION}/${ARCHIVE}" \
+    && curl -fsSL -O "${GEOCHECK_RELEASE_URL}/v${GEOCHECK_VERSION}/checksums.txt" \
+    && grep "  ${ARCHIVE}\$" checksums.txt | sha256sum -c - \
+    && tar -xzf "${ARCHIVE}" geocheck \
+    && install -m 0755 geocheck /usr/local/bin/geocheck \
+    && rm -rf /tmp/*
+
+
+FROM scratch AS integration-bin
+
 
 FROM node:24.19-trixie-slim
 
@@ -69,8 +91,9 @@ COPY --from=xray /usr/local/share/xray/geoip.dat /usr/local/share/xray/geoip.dat
 COPY --from=xray /usr/local/share/xray/geosite.dat /usr/local/share/xray/geosite.dat
 COPY --from=xray /usr/local/share/asn /usr/local/share/asn
 COPY --from=singbox /go/bin/sing-box /usr/local/bin/sing-box
+COPY --from=geocheck /usr/local/bin/geocheck /usr/local/bin/geocheck
 
-COPY rootfs/ /
+COPY docker/rootfs/ /
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -98,6 +121,12 @@ RUN apt-get update \
     && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
         /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
         /usr/local/include/node
+
+ARG INTEGRATIONS=""
+
+RUN --mount=type=bind,source=docker/integrations,target=/mnt/integrations \
+    --mount=type=bind,from=integration-bin,target=/mnt/bin \
+    sh /mnt/integrations/install.sh "${INTEGRATIONS}"
 
 ENV NODE_ENV=production
 ENV NODE_OPTIONS="--max-http-header-size=65536"

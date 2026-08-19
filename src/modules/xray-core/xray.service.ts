@@ -1,7 +1,7 @@
 import ems from 'enhanced-ms';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import pRetry from 'p-retry';
+import pRetry, { AbortError } from 'p-retry';
 
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -15,6 +15,8 @@ import { generateApiConfig } from '@common/utils/generate-api-config';
 import { getSystemInfo, getSystemStats } from '@common/utils/get-system-stats';
 import { StartXrayCommand } from '@libs/contracts/commands';
 import { CORE_TYPE, KNOWN_ERRORS } from '@libs/contracts/constants';
+
+import { IntegrationsService } from '@integration-modules/integrations.service';
 
 import { ResetPluginsCommand } from '../_plugin/commands/reset-plugins/reset-plugins.command';
 import { RunPreStartCommand } from '../_plugin/commands/run-pre-start/run-pre-start.command';
@@ -34,6 +36,13 @@ import { XrayProcessService } from './xray-process.service';
 
 const XRAY_LOG_FILE = '/var/log/xray/current' as const;
 const execFileAsync = promisify(execFile);
+
+class XrayProcessDownError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'XrayProcessDownError';
+    }
+}
 
 @Injectable()
 export class XrayService implements OnApplicationBootstrap {
@@ -56,6 +65,7 @@ export class XrayService implements OnApplicationBootstrap {
         private readonly xrayProcess: XrayProcessService,
         private readonly geodataService: GeodataService,
         private readonly coreLoaderService: CoreLoaderService,
+        private readonly integrations: IntegrationsService,
         private readonly internalService: InternalService,
         private readonly configService: ConfigService,
         private readonly queryBus: QueryBus,
@@ -139,6 +149,28 @@ export class XrayService implements OnApplicationBootstrap {
         this.isXrayStartedProccesing = true;
 
         try {
+            const integrations = await this.integrations.sync(
+                body.internals.integrations,
+                body.internals.metadata,
+            );
+
+            if (integrations.error) {
+                this.logger.error(`Failed to sync integrations: ${integrations.error}`);
+                return {
+                    isOk: true,
+                    response: new StartXrayResponseModel(
+                        false,
+                        CORE_TYPE.XRAY,
+                        null,
+                        integrations.error,
+                        {
+                            version: this.nodeVersion,
+                        },
+                        system,
+                    ),
+                };
+            }
+
             if (this.isXrayOnline && !this.disableHashedSetCheck && !body.internals.forceRestart) {
                 const { isOk } = await this.xtlsSdk.stats.getSysStats();
 
@@ -211,7 +243,7 @@ export class XrayService implements OnApplicationBootstrap {
                 };
             }
 
-            const isStarted = await this.getXrayInternalStatus();
+            const { isStarted, error: startError } = await this.getXrayInternalStatus();
 
             if (!isStarted) {
                 this.isXrayOnline = false;
@@ -221,7 +253,8 @@ export class XrayService implements OnApplicationBootstrap {
                     ...KNOWN_ERRORS.XRAY_FAILED_TO_START,
                 });
 
-                await this.dumpTailBlock(XRAY_LOG_FILE, 5);
+                const tail = await this.dumpTailBlock(XRAY_LOG_FILE, 5);
+                const logReason = tail.at(-1)?.trim().slice(0, 500);
 
                 return {
                     isOk: true,
@@ -229,7 +262,7 @@ export class XrayService implements OnApplicationBootstrap {
                         isStarted,
                         CORE_TYPE.XRAY,
                         this.xrayVersion,
-                        'Xray Core did not become ready in time',
+                        logReason ? `${startError} · ${logReason}` : startError,
                         {
                             version: this.nodeVersion,
                         },
@@ -311,6 +344,7 @@ export class XrayService implements OnApplicationBootstrap {
 
             await this.killAllXrayProcesses();
             await this.singBoxService.stop();
+            await this.integrations.stop();
 
             this.isXrayOnline = false;
             this.coreState.setOffline();
@@ -387,16 +421,33 @@ export class XrayService implements OnApplicationBootstrap {
         };
     }
 
-    private async getXrayInternalStatus(): Promise<boolean> {
+    private async getXrayInternalStatus(): Promise<{
+        isStarted: boolean;
+        error: string | null;
+    }> {
         const tm = performance.now();
+
+        const startedPid = (await this.xrayProcess.getStatus()).pid;
+
         try {
-            return await pRetry(
+            await pRetry(
                 async () => {
                     const { isOk, message } = await this.xtlsSdk.stats.getSysStats();
-                    if (!isOk) {
-                        throw new Error(message);
+                    if (isOk) {
+                        return;
                     }
-                    return true;
+
+                    const status = await this.xrayProcess.getStatus();
+
+                    if (!status.up || (startedPid !== null && status.pid !== startedPid)) {
+                        throw new AbortError(
+                            new XrayProcessDownError(
+                                `Xray Core process is not running anymore (s6: ${await this.xrayProcess.getStatusLine()})`,
+                            ),
+                        );
+                    }
+
+                    throw new Error(message);
                 },
                 {
                     retries: 30,
@@ -416,9 +467,18 @@ export class XrayService implements OnApplicationBootstrap {
                     },
                 },
             );
+
+            return { isStarted: true, error: null };
         } catch (error) {
             this.logger.error(`Failed to get Xray internal status: ${error}`);
-            return false;
+
+            return {
+                isStarted: false,
+                error:
+                    error instanceof XrayProcessDownError
+                        ? error.message
+                        : 'Xray Core did not become ready in time',
+            };
         }
     }
 
@@ -449,9 +509,9 @@ export class XrayService implements OnApplicationBootstrap {
         }
     }
 
-    private async dumpTailBlock(path: string, lines: number): Promise<void> {
+    private async dumpTailBlock(path: string, lines: number): Promise<string[]> {
         const tail = await this.tailLogLines(path, lines);
-        if (tail.length === 0) return;
+        if (tail.length === 0) return tail;
 
         this.logger.error(
             [
@@ -460,5 +520,7 @@ export class XrayService implements OnApplicationBootstrap {
                 ...tail.map((l) => `│ ${l}`),
             ].join('\n'),
         );
+
+        return tail;
     }
 }

@@ -57,6 +57,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote add upstream https://github.com/remnawave/node.git
           git fetch --no-tags upstream main
+          git fetch --no-tags upstream "${UPSTREAM_REF}"
           bash .github/scripts/upstream-sync-lib.sh merge
       - name: Verify package version from official release commit
         if: steps.sync.outcome == 'success' && steps.sync.outputs.updated == 'true'
