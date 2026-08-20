@@ -29,6 +29,7 @@ interface IGenerateApiConfigParams {
     torrentBlockerState: {
         enabled: boolean;
         includeRuleTags: Set<string>;
+        rulePosition: number;
     };
     internal: {
         socketPath: string;
@@ -84,7 +85,11 @@ export const generateApiConfig = (args: IGenerateApiConfigParams): Record<string
 
         result.outbounds.push(XRAY_TORRENT_BLOCKER_OUTBOUND_MODEL);
 
-        routing.rules.splice(1, 0, XRAY_TORRENT_BLOCKER_ROUTING_RULES_MODEL({ webhookUrl }));
+        routing.rules.splice(
+            resolveRuleIndex(torrentBlockerState.rulePosition, routing.rules.length),
+            0,
+            XRAY_TORRENT_BLOCKER_ROUTING_RULES_MODEL({ webhookUrl }),
+        );
 
         if (torrentBlockerState.includeRuleTags.size > 0) {
             for (const rule of routing.rules) {
@@ -103,6 +108,16 @@ export const generateApiConfig = (args: IGenerateApiConfigParams): Record<string
     }
 
     return result;
+};
+
+const resolveRuleIndex = (position: number, rulesLength: number): number => {
+    const userRulesCount = rulesLength - 1;
+
+    if (!Number.isInteger(position) || position <= 0) {
+        return 1;
+    }
+
+    return 1 + Math.min(position, userRulesCount);
 };
 
 const buildWebhookUrl = (internal: { socketPath: string; token: string }): string => {
