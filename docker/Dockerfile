@@ -114,7 +114,7 @@ COPY --from=build /opt/app/dist ./dist
 COPY --from=xray /usr/local/bin/xray /usr/local/bin/xray
 COPY --from=xray /usr/local/share/xray/geoip.dat /usr/local/share/xray/geoip.dat
 COPY --from=xray /usr/local/share/xray/geosite.dat /usr/local/share/xray/geosite.dat
-COPY --from=xray /usr/local/share/asn /usr/local/share/asn
+COPY --from=asn /usr/local/share/asn /usr/local/share/asn
 COPY --from=singbox /go/bin/sing-box /usr/local/bin/sing-box
 COPY --from=geocheck /usr/local/bin/geocheck /usr/local/bin/geocheck
 
