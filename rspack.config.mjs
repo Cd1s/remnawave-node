@@ -11,6 +11,12 @@ import pkg from './package.json' with { type: 'json' };
 const isDev = process.env.NODE_ENV !== 'production';
 const nodeVersion = process.env.RWNODE_VERSION || pkg.version;
 
+if (isDev) {
+    try {
+        process.loadEnvFile('.env');
+    } catch {}
+}
+
 export default defineConfig({
     context: import.meta.dirname,
     target: 'node',

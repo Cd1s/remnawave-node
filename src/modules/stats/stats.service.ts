@@ -4,7 +4,7 @@ import { QueryBus } from '@nestjs/cqrs';
 import { XtlsApi } from '@remnawave/xtls-sdk';
 import { InjectXtls } from '@remnawave/xtls-sdk-nestjs';
 
-import { ICommandResponse } from '@common/types/command-response.type';
+import { fail, ok, TResult } from '@common/types';
 import { getSystemStats } from '@common/utils/get-system-stats';
 import { ERRORS } from '@libs/contracts/constants';
 
@@ -38,7 +38,7 @@ export class StatsService {
 
     public async getUserOnlineStatus(
         body: IGetUserOnlineStatusRequest,
-    ): Promise<ICommandResponse<GetUserOnlineStatusResponseModel>> {
+    ): Promise<TResult<GetUserOnlineStatusResponseModel>> {
         try {
             if (this.coreState.isSingBoxActive()) {
                 return {
@@ -50,16 +50,10 @@ export class StatsService {
             const response = await this.xtlsSdk.stats.getUserOnlineStatus(body.username);
 
             if (response.isOk && response.data) {
-                return {
-                    isOk: true,
-                    response: new GetUserOnlineStatusResponseModel(response.data.online),
-                };
+                return ok(new GetUserOnlineStatusResponseModel(response.data.online));
             }
 
-            return {
-                isOk: true,
-                response: new GetUserOnlineStatusResponseModel(false),
-            };
+            return ok(new GetUserOnlineStatusResponseModel(false));
         } catch (error) {
             this.logger.error(error);
             return {
@@ -69,7 +63,7 @@ export class StatsService {
         }
     }
 
-    public async getSystemStats(): Promise<ICommandResponse<GetSystemStatsResponseModel>> {
+    public async getSystemStats(): Promise<TResult<GetSystemStatsResponseModel>> {
         try {
             if (this.coreState.isSingBoxActive()) {
                 const response = await this.singBoxStats.getSysStats();
@@ -111,10 +105,7 @@ export class StatsService {
 
             if (!response.isOk || !response.data) {
                 this.logger.warn(response);
-                return {
-                    isOk: false,
-                    ...ERRORS.FAILED_TO_GET_SYSTEM_STATS,
-                };
+                return fail(ERRORS.FAILED_TO_GET_SYSTEM_STATS);
             }
 
             const interfaceStats = await this.queryBus.execute(new GetInterfaceStatsQuery());
@@ -147,9 +138,7 @@ export class StatsService {
         }
     }
 
-    public async getUsersStats(
-        reset: boolean,
-    ): Promise<ICommandResponse<GetUsersStatsResponseModel>> {
+    public async getUsersStats(reset: boolean): Promise<TResult<GetUsersStatsResponseModel>> {
         try {
             if (this.coreState.isSingBoxActive()) {
                 const snapshot = await this.singBoxStats.getSnapshot(reset, ['user>>>']);
@@ -169,18 +158,14 @@ export class StatsService {
             if (!response.isOk || !response.data) {
                 this.logger.warn(response);
 
-                return {
-                    isOk: false,
-                    ...ERRORS.FAILED_TO_GET_USERS_STATS,
-                };
+                return fail(ERRORS.FAILED_TO_GET_USERS_STATS);
             }
 
-            return {
-                isOk: true,
-                response: new GetUsersStatsResponseModel(
+            return ok(
+                new GetUsersStatsResponseModel(
                     response.data.users.filter((user) => user.uplink !== 0 || user.downlink !== 0),
                 ),
-            };
+            );
 
             // const demoRes = Array.from({ length: 160_000 }, (_, i) => ({
             //     username: String(i + 1),
@@ -194,17 +179,14 @@ export class StatsService {
             // };
         } catch (error) {
             this.logger.error(error);
-            return {
-                isOk: false,
-                ...ERRORS.FAILED_TO_GET_USERS_STATS,
-            };
+            return fail(ERRORS.FAILED_TO_GET_USERS_STATS);
         }
     }
 
     public async getInboundStats(
         tag: string,
         reset: boolean,
-    ): Promise<ICommandResponse<GetInboundStatsResponseModel>> {
+    ): Promise<TResult<GetInboundStatsResponseModel>> {
         try {
             if (this.coreState.isSingBoxActive()) {
                 const snapshot = await this.singBoxStats.getSnapshot(reset, [
@@ -223,33 +205,26 @@ export class StatsService {
             const response = await this.xtlsSdk.stats.getInboundStats(tag, reset);
 
             if (!response.isOk || !response.data || !response.data.inbound) {
-                return {
-                    isOk: false,
-                    ...ERRORS.FAILED_TO_GET_INBOUND_STATS,
-                };
+                return fail(ERRORS.FAILED_TO_GET_INBOUND_STATS);
             }
 
-            return {
-                isOk: true,
-                response: new GetInboundStatsResponseModel({
+            return ok(
+                new GetInboundStatsResponseModel({
                     inbound: response.data.inbound.inbound,
                     downlink: response.data.inbound.downlink,
                     uplink: response.data.inbound.uplink,
                 }),
-            };
+            );
         } catch (error) {
             this.logger.error(error);
-            return {
-                isOk: false,
-                ...ERRORS.FAILED_TO_GET_INBOUND_STATS,
-            };
+            return fail(ERRORS.FAILED_TO_GET_INBOUND_STATS);
         }
     }
 
     public async getOutboundStats(
         tag: string,
         reset: boolean,
-    ): Promise<ICommandResponse<GetOutboundStatsResponseModel>> {
+    ): Promise<TResult<GetOutboundStatsResponseModel>> {
         try {
             if (this.coreState.isSingBoxActive()) {
                 const snapshot = await this.singBoxStats.getSnapshot(reset, [
@@ -268,32 +243,25 @@ export class StatsService {
             const response = await this.xtlsSdk.stats.getOutboundStats(tag, reset);
 
             if (!response.isOk || !response.data || !response.data.outbound) {
-                return {
-                    isOk: false,
-                    ...ERRORS.FAILED_TO_GET_OUTBOUND_STATS,
-                };
+                return fail(ERRORS.FAILED_TO_GET_OUTBOUND_STATS);
             }
 
-            return {
-                isOk: true,
-                response: new GetOutboundStatsResponseModel({
+            return ok(
+                new GetOutboundStatsResponseModel({
                     outbound: response.data.outbound.outbound,
                     downlink: response.data.outbound.downlink,
                     uplink: response.data.outbound.uplink,
                 }),
-            };
+            );
         } catch (error) {
             this.logger.error(error);
-            return {
-                isOk: false,
-                ...ERRORS.FAILED_TO_GET_OUTBOUND_STATS,
-            };
+            return fail(ERRORS.FAILED_TO_GET_OUTBOUND_STATS);
         }
     }
 
     public async getAllInboundsStats(
         reset: boolean,
-    ): Promise<ICommandResponse<GetAllInboundsStatsResponseModel>> {
+    ): Promise<TResult<GetAllInboundsStatsResponseModel>> {
         try {
             if (this.coreState.isSingBoxActive()) {
                 const snapshot = await this.singBoxStats.getSnapshot(reset, ['inbound>>>']);
@@ -311,28 +279,19 @@ export class StatsService {
             const response = await this.xtlsSdk.stats.getAllInboundsStats(reset);
 
             if (!response.isOk || !response.data) {
-                return {
-                    isOk: false,
-                    ...ERRORS.FAILED_TO_GET_INBOUNDS_STATS,
-                };
+                return fail(ERRORS.FAILED_TO_GET_INBOUNDS_STATS);
             }
 
-            return {
-                isOk: true,
-                response: new GetAllInboundsStatsResponseModel(response.data.inbounds),
-            };
+            return ok(new GetAllInboundsStatsResponseModel(response.data.inbounds));
         } catch (error) {
             this.logger.error(error);
-            return {
-                isOk: false,
-                ...ERRORS.FAILED_TO_GET_INBOUNDS_STATS,
-            };
+            return fail(ERRORS.FAILED_TO_GET_INBOUNDS_STATS);
         }
     }
 
     public async getAllOutboundsStats(
         reset: boolean,
-    ): Promise<ICommandResponse<GetAllOutboundsStatsResponseModel>> {
+    ): Promise<TResult<GetAllOutboundsStatsResponseModel>> {
         try {
             if (this.coreState.isSingBoxActive()) {
                 const snapshot = await this.singBoxStats.getSnapshot(reset, ['outbound>>>']);
@@ -351,28 +310,17 @@ export class StatsService {
 
             if (!response.isOk || !response.data) {
                 this.logger.error(response);
-                return {
-                    isOk: false,
-                    ...ERRORS.FAILED_TO_GET_OUTBOUNDS_STATS,
-                };
+                return fail(ERRORS.FAILED_TO_GET_OUTBOUNDS_STATS);
             }
 
-            return {
-                isOk: true,
-                response: new GetAllOutboundsStatsResponseModel(response.data.outbounds),
-            };
+            return ok(new GetAllOutboundsStatsResponseModel(response.data.outbounds));
         } catch (error) {
             this.logger.error(error);
-            return {
-                isOk: false,
-                ...ERRORS.FAILED_TO_GET_INBOUNDS_STATS,
-            };
+            return fail(ERRORS.FAILED_TO_GET_INBOUNDS_STATS);
         }
     }
 
-    public async getCombinedStats(
-        reset: boolean,
-    ): Promise<ICommandResponse<GetCombinedStatsResponseModel>> {
+    public async getCombinedStats(reset: boolean): Promise<TResult<GetCombinedStatsResponseModel>> {
         try {
             if (this.coreState.isSingBoxActive()) {
                 const snapshot = await this.singBoxStats.getSnapshot(reset, [
@@ -400,31 +348,19 @@ export class StatsService {
                 await this.xtlsSdk.stats.getAllOutboundsStats(reset);
 
             if (!isOkInbounds || !inboundsData || !isOkOutbounds || !outboundsData) {
-                return {
-                    isOk: false,
-                    ...ERRORS.FAILED_TO_GET_COMBINED_STATS,
-                };
+                return fail(ERRORS.FAILED_TO_GET_COMBINED_STATS);
             }
 
-            return {
-                isOk: true,
-                response: new GetCombinedStatsResponseModel(
-                    inboundsData.inbounds,
-                    outboundsData.outbounds,
-                ),
-            };
+            return ok(
+                new GetCombinedStatsResponseModel(inboundsData.inbounds, outboundsData.outbounds),
+            );
         } catch (error) {
             this.logger.error(error);
-            return {
-                isOk: false,
-                ...ERRORS.FAILED_TO_GET_COMBINED_STATS,
-            };
+            return fail(ERRORS.FAILED_TO_GET_COMBINED_STATS);
         }
     }
 
-    public async getUserIpList(
-        userId: string,
-    ): Promise<ICommandResponse<GetUserIpListResponseModel>> {
+    public async getUserIpList(userId: string): Promise<TResult<GetUserIpListResponseModel>> {
         try {
             if (this.coreState.isSingBoxActive()) {
                 return {
@@ -443,27 +379,18 @@ export class StatsService {
                 lastSeen: new Date(timestamp * 1000),
             }));
 
-            return {
-                isOk: true,
-                response: new GetUserIpListResponseModel(ips),
-            };
+            return ok(new GetUserIpListResponseModel(ips));
         } catch (error) {
             if (error && typeof error === 'object' && 'code' in error && error.code === 5) {
-                return {
-                    isOk: true,
-                    response: new GetUserIpListResponseModel([]),
-                };
+                return ok(new GetUserIpListResponseModel([]));
             }
 
             this.logger.error(error);
-            return {
-                isOk: true,
-                response: new GetUserIpListResponseModel([]),
-            };
+            return ok(new GetUserIpListResponseModel([]));
         }
     }
 
-    public async getUsersIpList(): Promise<ICommandResponse<GetUsersIpListResponseModel>> {
+    public async getUsersIpList(): Promise<TResult<GetUsersIpListResponseModel>> {
         try {
             if (this.coreState.isSingBoxActive()) {
                 return {
@@ -476,22 +403,13 @@ export class StatsService {
 
             if (!response.isOk || !response.data || !response.data.users) {
                 this.logger.error(response);
-                return {
-                    isOk: true,
-                    response: new GetUsersIpListResponseModel([]),
-                };
+                return ok(new GetUsersIpListResponseModel([]));
             }
 
-            return {
-                isOk: true,
-                response: new GetUsersIpListResponseModel(response.data.users),
-            };
+            return ok(new GetUsersIpListResponseModel(response.data.users));
         } catch (error) {
             this.logger.error(error);
-            return {
-                isOk: true,
-                response: new GetUsersIpListResponseModel([]),
-            };
+            return ok(new GetUsersIpListResponseModel([]));
         }
     }
 }

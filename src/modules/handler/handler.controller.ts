@@ -18,14 +18,6 @@ import {
     RemoveUsersResponseDto,
 } from './dtos';
 import { AddUserRequestDto, AddUserResponseDto } from './dtos/add-user.dto';
-import {
-    GetInboundUsersCountRequestDto,
-    GetInboundUsersCountResponseDto,
-} from './dtos/get-inbound-users-count.dto';
-import {
-    GetInboundUsersRequestDto,
-    GetInboundUsersResponseDto,
-} from './dtos/get-inbound-users.dto';
 import { HandlerService } from './handler.service';
 
 @UseGuards(JwtDefaultGuard)
@@ -44,33 +36,9 @@ export class HandlerController {
         };
     }
 
-    @Post(HANDLER_ROUTES.GET_INBOUND_USERS)
-    public async getInboundUsers(
-        @Body() body: GetInboundUsersRequestDto,
-    ): Promise<GetInboundUsersResponseDto> {
-        const response = await this.handlerService.getInboundUsers(body.tag);
-        const data = errorHandler(response);
-
-        return {
-            response: data,
-        };
-    }
-
     @Post(HANDLER_ROUTES.REMOVE_USER)
     public async removeUser(@Body() body: RemoveUserRequestDto): Promise<RemoveUserResponseDto> {
         const response = await this.handlerService.removeUser(body);
-        const data = errorHandler(response);
-
-        return {
-            response: data,
-        };
-    }
-
-    @Post(HANDLER_ROUTES.GET_INBOUND_USERS_COUNT)
-    public async getInboundUsersCount(
-        @Body() body: GetInboundUsersCountRequestDto,
-    ): Promise<GetInboundUsersCountResponseDto> {
-        const response = await this.handlerService.getInboundUsersCount(body.tag);
         const data = errorHandler(response);
 
         return {

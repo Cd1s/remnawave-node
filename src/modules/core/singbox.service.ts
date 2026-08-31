@@ -8,7 +8,7 @@ import semver from 'semver';
 import { Injectable, Logger } from '@nestjs/common';
 import { QueryBus } from '@nestjs/cqrs';
 
-import { ICommandResponse } from '@common/types/command-response.type';
+import { TResult } from '@common/types';
 import { getSystemInfo, getSystemStats } from '@common/utils/get-system-stats';
 import { StartXrayCommand } from '@libs/contracts/commands';
 import { CORE_TYPE } from '@libs/contracts/constants';
@@ -71,7 +71,7 @@ export class SingBoxService {
     public async start(
         body: StartXrayCommand.Request,
         ip: string,
-    ): Promise<ICommandResponse<StartXrayResponseModel>> {
+    ): Promise<TResult<StartXrayResponseModel>> {
         const startedAt = performance.now();
         const system = await this.getSystem();
 
@@ -173,7 +173,7 @@ export class SingBoxService {
         }
     }
 
-    public async stop(): Promise<ICommandResponse<StopXrayResponseModel>> {
+    public async stop(): Promise<TResult<StopXrayResponseModel>> {
         try {
             if (this.coreState.isSingBoxActive()) {
                 try {

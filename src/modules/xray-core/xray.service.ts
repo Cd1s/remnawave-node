@@ -4,13 +4,13 @@ import { promisify } from 'node:util';
 import pRetry, { AbortError } from 'p-retry';
 
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { CommandBus, QueryBus } from '@nestjs/cqrs';
 
 import { XtlsApi } from '@remnawave/xtls-sdk';
 import { InjectXtls } from '@remnawave/xtls-sdk-nestjs';
 
-import { ICommandResponse } from '@common/types/command-response.type';
+import { TypedConfigService } from '@common/config/app-config';
+import { ok, TResult } from '@common/types';
 import { generateApiConfig } from '@common/utils/generate-api-config';
 import { getSystemInfo, getSystemStats } from '@common/utils/get-system-stats';
 import { StartXrayCommand } from '@libs/contracts/commands';
@@ -67,25 +67,23 @@ export class XrayService implements OnApplicationBootstrap {
         private readonly coreLoaderService: CoreLoaderService,
         private readonly integrations: IntegrationsService,
         private readonly internalService: InternalService,
-        private readonly configService: ConfigService,
+        private readonly configService: TypedConfigService,
         private readonly queryBus: QueryBus,
         private readonly commandBus: CommandBus,
         private readonly coreState: CoreStateService,
         private readonly singBoxService: SingBoxService,
     ) {
         this.internal = {
-            socketPath: this.configService.getOrThrow<string>('INTERNAL_SOCKET_PATH'),
-            token: this.configService.getOrThrow<string>('INTERNAL_REST_TOKEN'),
-            xtlsApiSocketPath: this.configService.getOrThrow<string>('XTLS_API_SOCKET_PATH'),
+            socketPath: this.configService.getOrThrow('INTERNAL_SOCKET_PATH'),
+            token: this.configService.getOrThrow('INTERNAL_REST_TOKEN'),
+            xtlsApiSocketPath: this.configService.getOrThrow('XTLS_API_SOCKET_PATH'),
         };
 
         this.xrayPath = '/usr/local/bin/rw-core';
         this.xrayVersion = null;
 
         this.isXrayStartedProccesing = false;
-        this.disableHashedSetCheck = this.configService.getOrThrow<boolean>(
-            'DISABLE_HASHED_SET_CHECK',
-        );
+        this.disableHashedSetCheck = this.configService.getOrThrow('DISABLE_HASHED_SET_CHECK');
     }
 
     async onApplicationBootstrap() {
@@ -107,7 +105,7 @@ export class XrayService implements OnApplicationBootstrap {
     public async startXray(
         body: StartXrayCommand.Request,
         ip: string,
-    ): Promise<ICommandResponse<StartXrayResponseModel>> {
+    ): Promise<TResult<StartXrayResponseModel>> {
         if (body.coreType === CORE_TYPE.SINGBOX) {
             if (this.isXrayOnline) {
                 await this.killAllXrayProcesses();
@@ -131,9 +129,8 @@ export class XrayService implements OnApplicationBootstrap {
 
         if (this.isXrayStartedProccesing) {
             this.logger.warn('Request already in progress');
-            return {
-                isOk: true,
-                response: new StartXrayResponseModel(
+            return ok(
+                new StartXrayResponseModel(
                     false,
                     CORE_TYPE.XRAY,
                     this.xrayVersion,
@@ -143,7 +140,7 @@ export class XrayService implements OnApplicationBootstrap {
                     },
                     system,
                 ),
-            };
+            );
         }
 
         this.isXrayStartedProccesing = true;
@@ -156,9 +153,8 @@ export class XrayService implements OnApplicationBootstrap {
 
             if (integrations.error) {
                 this.logger.error(`Failed to sync integrations: ${integrations.error}`);
-                return {
-                    isOk: true,
-                    response: new StartXrayResponseModel(
+                return ok(
+                    new StartXrayResponseModel(
                         false,
                         CORE_TYPE.XRAY,
                         null,
@@ -168,7 +164,7 @@ export class XrayService implements OnApplicationBootstrap {
                         },
                         system,
                     ),
-                };
+                );
             }
 
             if (this.isXrayOnline && !this.disableHashedSetCheck && !body.internals.forceRestart) {
@@ -186,9 +182,8 @@ export class XrayService implements OnApplicationBootstrap {
                 }
 
                 if (!shouldRestart) {
-                    return {
-                        isOk: true,
-                        response: new StartXrayResponseModel(
+                    return ok(
+                        new StartXrayResponseModel(
                             true,
                             CORE_TYPE.XRAY,
                             this.xrayVersion,
@@ -198,7 +193,7 @@ export class XrayService implements OnApplicationBootstrap {
                             },
                             system,
                         ),
-                    };
+                    );
                 }
             }
 
@@ -228,9 +223,8 @@ export class XrayService implements OnApplicationBootstrap {
             if (xrayProcess.error) {
                 this.logger.error(`Failed to (re)start Xray process via s6: ${xrayProcess.error}`);
 
-                return {
-                    isOk: true,
-                    response: new StartXrayResponseModel(
+                return ok(
+                    new StartXrayResponseModel(
                         false,
                         CORE_TYPE.XRAY,
                         null,
@@ -238,7 +232,7 @@ export class XrayService implements OnApplicationBootstrap {
                         { version: this.nodeVersion },
                         system,
                     ),
-                };
+                );
             }
 
             const { isStarted, error: startError } = await this.getXrayInternalStatus();
@@ -254,9 +248,8 @@ export class XrayService implements OnApplicationBootstrap {
                 const tail = await this.dumpTailBlock(XRAY_LOG_FILE, 5);
                 const logReason = tail.at(-1)?.trim().slice(0, 500);
 
-                return {
-                    isOk: true,
-                    response: new StartXrayResponseModel(
+                return ok(
+                    new StartXrayResponseModel(
                         isStarted,
                         CORE_TYPE.XRAY,
                         this.xrayVersion,
@@ -266,7 +259,7 @@ export class XrayService implements OnApplicationBootstrap {
                         },
                         system,
                     ),
-                };
+                );
             }
 
             this.isXrayOnline = true;
@@ -276,9 +269,8 @@ export class XrayService implements OnApplicationBootstrap {
 
             this.logger.log(`✔ XRay Core v${this.xrayVersion} is up and running.`);
 
-            return {
-                isOk: true,
-                response: new StartXrayResponseModel(
+            return ok(
+                new StartXrayResponseModel(
                     isStarted,
                     CORE_TYPE.XRAY,
                     this.xrayVersion,
@@ -288,7 +280,7 @@ export class XrayService implements OnApplicationBootstrap {
                     },
                     system,
                 ),
-            };
+            );
         } catch (error) {
             let errorMessage = null;
             if (error instanceof Error) {
@@ -298,9 +290,8 @@ export class XrayService implements OnApplicationBootstrap {
             this.logger.error(`Failed to start Xray: ${errorMessage}`);
             this.coreState.setOffline(CORE_TYPE.XRAY);
 
-            return {
-                isOk: true,
-                response: new StartXrayResponseModel(
+            return ok(
+                new StartXrayResponseModel(
                     false,
                     CORE_TYPE.XRAY,
                     null,
@@ -310,7 +301,7 @@ export class XrayService implements OnApplicationBootstrap {
                     },
                     system,
                 ),
-            };
+            );
         } finally {
             this.logger.log(
                 `Attempt to start XTLS took: ${ems(performance.now() - tm, {
@@ -326,7 +317,7 @@ export class XrayService implements OnApplicationBootstrap {
     public async stopXray(args: {
         withPluginCleanup?: boolean;
         withOnlineCheck?: boolean;
-    }): Promise<ICommandResponse<StopXrayResponseModel>> {
+    }): Promise<TResult<StopXrayResponseModel>> {
         const { withPluginCleanup = false, withOnlineCheck = false } = args;
         try {
             if (withPluginCleanup) {
@@ -334,10 +325,7 @@ export class XrayService implements OnApplicationBootstrap {
             }
 
             if (withOnlineCheck && !this.isXrayOnline) {
-                return {
-                    isOk: true,
-                    response: new StopXrayResponseModel(true),
-                };
+                return ok(new StopXrayResponseModel(true));
             }
 
             await this.killAllXrayProcesses();
@@ -348,24 +336,17 @@ export class XrayService implements OnApplicationBootstrap {
             this.coreState.setOffline();
             this.internalService.cleanup();
 
-            return {
-                isOk: true,
-                response: new StopXrayResponseModel(true),
-            };
+            return ok(new StopXrayResponseModel(true));
         } catch (error) {
             this.logger.error(`Failed to stop Xray Process: ${error}`);
-            return {
-                isOk: true,
-                response: new StopXrayResponseModel(false),
-            };
+            return ok(new StopXrayResponseModel(false));
         }
     }
 
-    public async getNodeHealthCheck(): Promise<ICommandResponse<GetNodeHealthCheckResponseModel>> {
+    public async getNodeHealthCheck(): Promise<TResult<GetNodeHealthCheckResponseModel>> {
         try {
-            return {
-                isOk: true,
-                response: new GetNodeHealthCheckResponseModel(
+            return ok(
+                new GetNodeHealthCheckResponseModel(
                     true,
                     this.coreState.isOnline(),
                     this.xrayVersion,
@@ -373,7 +354,7 @@ export class XrayService implements OnApplicationBootstrap {
                     this.coreState.getVersion(),
                     this.nodeVersion,
                 ),
-            };
+            );
         } catch (error) {
             this.logger.error(`Failed to get node health check: ${error}`);
 

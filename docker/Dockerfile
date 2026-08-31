@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:24.19-trixie-slim AS build
+FROM node:24.20-trixie-slim AS build
 
 ARG RWNODE_VERSION
 ENV RWNODE_VERSION=${RWNODE_VERSION}
@@ -15,6 +15,9 @@ COPY . .
 RUN npm run build \
     && npm run trace \
     && find dist/node_modules/@lmdb -name '*.node' ! -name 'node.napi.glibc.node' -delete \
+    && ARCH=$([ "$(uname -m)" = aarch64 ] && echo linux-arm64 || echo linux-x64) \
+    && find dist/node_modules/nftables-napi/prebuilds -name '*.musl.node' -delete \
+    && find dist/node_modules/nftables-napi/prebuilds -mindepth 1 -maxdepth 1 -type d ! -name "$ARCH" -exec rm -rf {} + \
     && chmod +x dist/cli.js
 
 
@@ -22,15 +25,37 @@ FROM alpine:3.21 AS xray
 
 ARG XRAY_CORE_VERSION=v26.7.28
 ARG UPSTREAM_REPO=XTLS
-ARG XRAY_CORE_INSTALL_SCRIPT=https://raw.githubusercontent.com/remnawave/scripts/main/scripts/install-xray.sh
-ARG ASN_LMDB_URL=https://github.com/remnawave/asn-index/releases/latest/download/asn-prefixes-lmdb.tar.gz
+ARG TARGETARCH
 
 RUN apk add --no-cache curl \
-    && curl -L ${XRAY_CORE_INSTALL_SCRIPT} | sh -s -- ${XRAY_CORE_VERSION} ${UPSTREAM_REPO} \
-    && mkdir -p /usr/local/share/asn \
-    && curl -L ${ASN_LMDB_URL} -o /tmp/asn-prefixes-lmdb.tar.gz \
-    && tar -xzf /tmp/asn-prefixes-lmdb.tar.gz -C /usr/local/share/asn \
-    && rm -f /tmp/asn-prefixes-lmdb.tar.gz
+    && case "${TARGETARCH}" in \
+        amd64) ARCHIVE='Xray-linux-64.zip' ;; \
+        arm64) ARCHIVE='Xray-linux-arm64-v8a.zip' ;; \
+    esac \
+    && BASE="https://github.com/${UPSTREAM_REPO}/Xray-core/releases/download/${XRAY_CORE_VERSION}" \
+    && curl -fsSL -o "/tmp/${ARCHIVE}" "${BASE}/${ARCHIVE}" \
+    && curl -fsSL -o /tmp/xray.dgst "${BASE}/${ARCHIVE}.dgst" \
+    && echo "$(awk '/^SHA2-256=/ { print $2 }' /tmp/xray.dgst)  /tmp/${ARCHIVE}" | sha256sum -c - \
+    && unzip -q "/tmp/${ARCHIVE}" -d /tmp/xray \
+    && install -m 755 /tmp/xray/xray /usr/local/bin/xray \
+    && install -d /usr/local/share/xray \
+    && install -m 644 /tmp/xray/geoip.dat /usr/local/share/xray/geoip.dat \
+    && install -m 644 /tmp/xray/geosite.dat /usr/local/share/xray/geosite.dat \
+    && rm -rf "/tmp/${ARCHIVE}" /tmp/xray /tmp/xray.dgst
+
+
+FROM alpine:3.21 AS asn
+
+ARG ASN_LMDB_URL=https://github.com/remnawave/asn-index/releases/latest/download/asn-prefixes.lmdb.zst
+
+RUN apk add --no-cache zstd
+
+ADD ${ASN_LMDB_URL} /tmp/asn-prefixes.lmdb.zst
+
+RUN mkdir -p /usr/local/share/asn \
+    && zstd -d /tmp/asn-prefixes.lmdb.zst -o /usr/local/share/asn/asn-prefixes.lmdb \
+    && chmod 644 /usr/local/share/asn/asn-prefixes.lmdb \
+    && rm -f /tmp/asn-prefixes.lmdb.zst
 
 
 FROM golang:1.24.7-bookworm AS singbox
@@ -70,9 +95,9 @@ RUN apk add --no-cache curl \
 FROM scratch AS integration-bin
 
 
-FROM node:24.19-trixie-slim
+FROM node:24.20-trixie-slim
 
-ARG S6_OVERLAY_VERSION=3.2.3.0
+ARG S6_OVERLAY_VERSION=3.2.3.2
 
 LABEL org.opencontainers.image.title="Remnawave Node"
 LABEL org.opencontainers.image.description="Remnawave Node with Xray and sing-box cores"
@@ -97,7 +122,7 @@ COPY docker/rootfs/ /
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        ca-certificates wget xz-utils libnftnl11 libmnl0 \
+        ca-certificates wget xz-utils \
     && S6_ARCH="$(uname -m)" \
     && wget -qO /tmp/s6-noarch.tar.xz "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz" \
     && wget -qO /tmp/s6-arch.tar.xz "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_ARCH}.tar.xz" \
