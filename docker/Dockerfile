@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:24.20-trixie-slim AS build
+FROM node:24.22.1-trixie-slim AS build
 
 ARG RWNODE_VERSION
 ENV RWNODE_VERSION=${RWNODE_VERSION}
@@ -58,7 +58,7 @@ RUN mkdir -p /usr/local/share/asn \
     && rm -f /tmp/asn-prefixes.lmdb.zst
 
 
-FROM golang:1.24.7-bookworm AS singbox
+FROM golang:1.27.3-bookworm AS singbox
 
 ARG SINGBOX_CORE_VERSION=v1.13.14
 ARG SINGBOX_CORE_VERSION_NAME=1.13.14
@@ -95,7 +95,7 @@ RUN apk add --no-cache curl \
 FROM scratch AS integration-bin
 
 
-FROM node:24.20-trixie-slim
+FROM node:24.22.1-trixie-slim
 
 ARG S6_OVERLAY_VERSION=3.2.3.2
 
