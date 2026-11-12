@@ -33,7 +33,7 @@ require 'if [[ ! "$image_tag" =~ ^xray-v[0-9]+'
 require '-us-compat-[0-9]{8}$ ]]'
 require "linux/amd64,linux/arm64"
 require "actions/setup-go@v5"
-require "github.com/sagernet/sing-box/cmd/sing-box@v1.13.14"
+require "github.com/sagernet/sing-box/cmd/sing-box@v1.14.4"
 require 'SINGBOX_BIN=$(go env GOPATH)/bin/sing-box'
 require "RWNODE_VERSION=3.0.0"
 require 'XRAY_CORE_VERSION=${{ inputs.xray_core_version }}'
