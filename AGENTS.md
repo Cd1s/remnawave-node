@@ -56,10 +56,15 @@ git log --oneline upstream/main..HEAD
 3. Only the selected managed core runs for a profile.
 4. sing-box configuration is written atomically and validated before reload.
 5. Failed sing-box validation does not replace a known-good running configuration.
-6. User add/remove operations preserve all unrelated inbounds and users.
-7. Traffic already collected before a reload is not lost or double-counted.
-8. Health responses identify the active core and version while preserving legacy fallbacks.
-9. Image builds remain available for `linux/amd64` and `linux/arm64`.
+6. User add/remove operations preserve all unrelated inbounds and users, and produce the same users
+   as the backend's full injection for every managed inbound type (AnyTLS, VLESS, Trojan,
+   Shadowsocks, Hysteria2 via the `hysteria` command type, TUIC).
+7. An empty Shadowsocks inbound is written with a random, unpublished placeholder user so it never
+   falls back to single-user mode keyed by the published SS2022 server key; the placeholder is never
+   kept in Node state or reported as a stats user.
+8. Traffic already collected before a reload is not lost or double-counted.
+9. Health responses identify the active core and version while preserving legacy fallbacks.
+10. Image builds remain available for `linux/amd64` and `linux/arm64`.
 
 ## How to add a custom feature
 

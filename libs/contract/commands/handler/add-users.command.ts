@@ -36,6 +36,11 @@ export namespace AddUsersCommand {
         tag: z.string(),
     });
 
+    const BaseTuicUser = z.object({
+        type: z.literal('tuic'),
+        tag: z.string(),
+    });
+
     export const RequestSchema = z.object({
         affectedInboundTags: z.array(z.string()),
         users: z.array(
@@ -48,6 +53,7 @@ export namespace AddUsersCommand {
                         BaseShadowsocks22User,
                         BaseHysteriaUser,
                         BaseAnyTlsUser,
+                        BaseTuicUser,
                     ]),
                 ),
 

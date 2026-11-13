@@ -1,5 +1,6 @@
 import ems from 'enhanced-ms';
 import { execFile } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import pRetry from 'p-retry';
@@ -25,6 +26,8 @@ const SINGBOX_LOG_FILE = '/var/log/sing-box/current';
 
 interface ISingBoxInbound extends Record<string, unknown> {
     tag?: string;
+    type?: string;
+    method?: string;
     users?: Record<string, unknown>[];
 }
 
@@ -240,6 +243,7 @@ export class SingBoxService {
                 inbound.users ??= [];
                 switch (user.type) {
                     case 'anytls':
+                    case 'hysteria':
                     case 'trojan':
                     case 'shadowsocks':
                     case 'shadowsocks22':
@@ -253,6 +257,13 @@ export class SingBoxService {
                             name: user.name,
                             uuid: user.uuid,
                             ...(user.flow ? { flow: user.flow } : {}),
+                        });
+                        break;
+                    case 'tuic':
+                        inbound.users.push({
+                            name: user.name,
+                            uuid: user.uuid,
+                            password: user.password,
                         });
                         break;
                 }
@@ -314,15 +325,42 @@ export class SingBoxService {
         return cloned;
     }
 
+    /**
+     * Without users, sing-box runs a Shadowsocks inbound in single-user mode that accepts the
+     * inbound password. For SS2022 that is the server key shared with every subscriber, so an
+     * empty inbound would admit disabled users. In the written file only, a random, never-published
+     * user keeps the inbound in multi-user mode, where only listed user keys are accepted.
+     */
+    private lockEmptyShadowsocksInbounds(config: ISingBoxConfig): ISingBoxConfig {
+        return {
+            ...config,
+            inbounds: config.inbounds?.map((inbound) => {
+                if (inbound.type !== 'shadowsocks' || (inbound.users?.length ?? 0) > 0) {
+                    return inbound;
+                }
+
+                const keyBytes = inbound.method === '2022-blake3-aes-128-gcm' ? 16 : 32;
+                return {
+                    ...inbound,
+                    users: [{ password: randomBytes(keyBytes).toString('base64') }],
+                };
+            }),
+        };
+    }
+
     private async writeAndValidateConfig(config: ISingBoxConfig): Promise<void> {
         const temporaryPath = `${this.configPath}.tmp`;
         await mkdir(this.configPath.slice(0, this.configPath.lastIndexOf('/')), {
             recursive: true,
         });
-        await writeFile(temporaryPath, JSON.stringify(config, null, 2), {
-            encoding: 'utf8',
-            mode: 0o600,
-        });
+        await writeFile(
+            temporaryPath,
+            JSON.stringify(this.lockEmptyShadowsocksInbounds(config), null, 2),
+            {
+                encoding: 'utf8',
+                mode: 0o600,
+            },
+        );
         await execFileAsync(this.singBoxPath, ['check', '-c', temporaryPath]);
         await rename(temporaryPath, this.configPath);
     }
