@@ -59,6 +59,14 @@ export namespace AddUserCommand {
         password: z.string(),
     });
 
+    const BaseTuicUser = z.object({
+        type: z.literal('tuic'),
+        tag: z.string(),
+        username: z.string(),
+        uuid: z.string(),
+        password: z.string(),
+    });
+
     export const RequestSchema = z.object({
         data: z.array(
             z.discriminatedUnion('type', [
@@ -68,6 +76,7 @@ export namespace AddUserCommand {
                 BaseShadowsocks22User,
                 BaseHysteriaUser,
                 BaseAnyTlsUser,
+                BaseTuicUser,
             ]),
         ),
         hashData: z.object({

@@ -283,17 +283,14 @@ export class HandlerService implements OnModuleInit {
                 const mutations: ISingBoxUserMutation[] = [];
                 for (const user of users) {
                     for (const inbound of user.inboundData) {
+                        const password = this.getSingBoxBulkPassword(inbound.type, user.userData);
+                        if (password === null) continue;
+
                         mutations.push({
                             tag: inbound.tag,
                             type: inbound.type,
                             name: user.userData.userId,
-                            password:
-                                inbound.type === 'trojan'
-                                    ? user.userData.trojanPassword
-                                    : inbound.type === 'shadowsocks' ||
-                                        inbound.type === 'shadowsocks22'
-                                      ? user.userData.ssPassword
-                                      : user.userData.vlessUuid,
+                            password,
                             uuid: user.userData.vlessUuid,
                             ...('flow' in inbound ? { flow: inbound.flow } : {}),
                         });
@@ -497,6 +494,29 @@ export class HandlerService implements OnModuleInit {
                         includeMs: true,
                     }),
             );
+        }
+    }
+
+    /**
+     * Bulk commands carry raw user secrets; derive the sing-box credential per inbound type.
+     * Returns null when the user has no valid credential (an SS2022 key must decode to 32 bytes;
+     * one invalid key would make `sing-box check` reject the whole config).
+     */
+    private getSingBoxBulkPassword(
+        type: AddUsersRequestDto['users'][number]['inboundData'][number]['type'],
+        userData: AddUsersRequestDto['users'][number]['userData'],
+    ): string | null {
+        switch (type) {
+            case 'trojan':
+                return userData.trojanPassword;
+            case 'shadowsocks':
+                return userData.ssPassword;
+            case 'shadowsocks22': {
+                const key = Buffer.from(userData.ssPassword).toString('base64');
+                return Buffer.from(key, 'base64').length === 32 ? key : null;
+            }
+            default:
+                return userData.vlessUuid;
         }
     }
 
